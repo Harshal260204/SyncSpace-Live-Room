@@ -16,7 +16,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true,
     default: () => require('uuid').v4(),
   },
   username: {
@@ -37,7 +36,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true,
   },
   isActive: {
     type: Boolean,
@@ -50,7 +48,6 @@ const userSchema = new mongoose.Schema({
   currentRoom: {
     type: String,
     default: null,
-    index: true,
   },
   preferences: {
     accessibility: {

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#3b82f6" />
+    <meta name="description" content="Live Room - Real-time collaborative workspace with full accessibility support" />
+    
+    <!-- Accessibility meta tags -->
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://liveroom.app/" />
+    <meta property="og:title" content="Live Room - Collaborative Workspace" />
+    <meta property="og:description" content="Real-time collaborative workspace with code editing, notes, canvas drawing, and chat. Fully accessible for all users." />
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://liveroom.app/" />
+    <meta property="twitter:title" content="Live Room - Collaborative Workspace" />
+    <meta property="twitter:description" content="Real-time collaborative workspace with code editing, notes, canvas drawing, and chat. Fully accessible for all users." />
+    <meta property="twitter:image" content="%PUBLIC_URL%/og-image.png" />
+
+    <!-- Preconnect to external domains for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Google Fonts for better typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Apple touch icon -->
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    
+    <!-- Manifest for PWA capabilities -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Skip link for keyboard navigation accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <title>Live Room - Collaborative Workspace</title>
+  </head>
+  <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <noscript>
+      <div style="text-align: center; padding: 2rem; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; margin: 1rem; border-radius: 0.5rem;">
+        <h1>JavaScript Required</h1>
+        <p>Live Room requires JavaScript to function. Please enable JavaScript in your browser to use this application.</p>
+        <p>If you're using a screen reader, please ensure JavaScript is enabled for the best experience.</p>
+      </div>
+    </noscript>
+    
+    <!-- Main application container -->
+    <div id="root" role="main" aria-label="Live Room Application">
+      <!-- Loading fallback for screen readers -->
+      <div id="loading-fallback" class="sr-only" aria-live="polite">
+        Loading Live Room application...
+      </div>
+    </div>
+    
+    <!-- Screen reader announcements container -->
+    <div id="announcements" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+    
+    <!-- Focus trap for modals and overlays -->
+    <div id="focus-trap" tabindex="-1" class="sr-only"></div>
+  </body>
+</html>

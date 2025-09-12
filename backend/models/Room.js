@@ -15,7 +15,6 @@ const userPresenceSchema = new mongoose.Schema({
   userId: {
     type: String,
     required: true,
-    index: true,
   },
   username: {
     type: String,
@@ -184,7 +183,6 @@ const roomSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true,
     default: () => require('uuid').v4(),
   },
   roomName: {
