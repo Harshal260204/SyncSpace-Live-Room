@@ -1,421 +1,737 @@
 /**
  * Chat Panel Component
  * 
- * Real-time collaborative chat with:
- * - Live messaging and message history
- * - Full accessibility support (ARIA labels, keyboard navigation)
- * - Socket.io integration for live synchronization
- * - Screen reader support and focus management
- * - Message types and user presence
+ * Real-time chat with:
+ * - Accessible notifications for new messages
+ * - Visual alerts that duplicate audio cues
+ * - Live user activity feed and presence indicators
+ * - ARIA attributes for dynamic announcements
+ * - Focus management and keyboard navigation
+ * - Real-time typing indicators
+ * - Message history and search
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useSocket } from '../../contexts/SocketContext';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
+import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
 
 /**
  * Chat Panel Component
  * 
- * Provides real-time collaborative chat with comprehensive accessibility
- * Includes message history, typing indicators, and user presence
+ * Provides real-time chat functionality with comprehensive accessibility
+ * Includes notifications, activity feed, and presence indicators
  */
-const ChatPanel = ({ onSendMessage, participants, compact = false }) => {
-  const { 
-    chatMessages, 
-    sendChatMessage, 
-    connected 
-  } = useSocket();
+const ChatPanel = ({ 
+  roomId, 
+  roomData, 
+  participants, 
+  onRoomUpdate,
+  isVisible = true 
+}) => {
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
+  const { socket, connected, sendEvent } = useSocket();
   const { user } = useUser();
 
-  // Local state
-  const [message, setMessage] = useState('');
+  // Chat state
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [typingUsers, setTypingUsers] = useState(new Set());
+  const [typingUsers, setTypingUsers] = useState({});
+  const [unreadCount, setUnreadCount] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [messageType, setMessageType] = useState('text');
+
+  // Activity feed state
+  const [activities, setActivities] = useState([]);
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [activityFilter, setActivityFilter] = useState('all'); // all, messages, joins, leaves, drawing, typing
+
+  // Notification state
+  const [notifications, setNotifications] = useState([]);
+  const [notificationSettings, setNotificationSettings] = useState({
+    soundEnabled: true,
+    visualEnabled: true,
+    joinLeaveEnabled: true,
+    typingEnabled: true,
+    drawingEnabled: true,
+    messageEnabled: true
+  });
+
+  // UI state
+  const [showSettings, setShowSettings] = useState(false);
+  const [showActivityFeed, setShowActivityFeed] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredMessages, setFilteredMessages] = useState([]);
 
   // Refs
   const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
+  const messageInputRef = useRef(null);
+  const chatContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
-  const typingIndicatorTimeoutRef = useRef(null);
+  const notificationTimeoutRef = useRef(null);
+  const audioContextRef = useRef(null);
 
-  // Debounce delays
-  const TYPING_DEBOUNCE_DELAY = 1000;
-  const TYPING_INDICATOR_DELAY = 3000;
-
-  /**
-   * Scroll to bottom of messages
-   */
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+  // Constants
+  const TYPING_TIMEOUT = 3000; // 3 seconds
+  const NOTIFICATION_DURATION = 5000; // 5 seconds
+  const MAX_MESSAGES = 1000; // Maximum messages to keep in memory
+  const MAX_ACTIVITIES = 500; // Maximum activities to keep in memory
 
   /**
-   * Handle message input changes
+   * Initialize chat from room data
    */
-  const handleMessageChange = useCallback((event) => {
-    const value = event.target.value;
-    setMessage(value);
-
-    // Show typing indicator
-    if (value.length > 0 && !isTyping) {
-      setIsTyping(true);
-      // Send typing indicator to other users
-      // This would be implemented in the socket context
+  useEffect(() => {
+    if (roomData?.chat) {
+      setMessages(roomData.chat);
     }
-
-    // Clear typing indicator after delay
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    typingTimeoutRef.current = setTimeout(() => {
-      setIsTyping(false);
-      // Send stop typing indicator
-    }, TYPING_DEBOUNCE_DELAY);
-  }, [isTyping]);
+  }, [roomData?.chat]);
 
   /**
-   * Handle message submission
+   * Initialize audio context for notifications
    */
-  const handleSubmit = useCallback((event) => {
-    event.preventDefault();
-    
-    if (!message.trim() || !connected) return;
-
-    const messageData = {
-      message: message.trim(),
-      messageType,
-      timestamp: new Date().toISOString(),
-      userId: user?.userId,
-      username: user?.username,
-    };
-
-    // Send message
-    if (onSendMessage) {
-      onSendMessage(messageData.message, messageData.messageType);
+  useEffect(() => {
+    if (notificationSettings.soundEnabled) {
+      try {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (error) {
+        console.warn('Audio context not supported:', error);
+      }
     }
-
-    // Clear input and typing state
-    setMessage('');
-    setIsTyping(false);
-    
-    // Clear typing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Announce message sent for screen readers
-    if (screenReader) {
-      announce('Message sent', 'polite');
-    }
-  }, [message, messageType, connected, user, onSendMessage, screenReader, announce]);
+  }, [notificationSettings.soundEnabled]);
 
   /**
-   * Handle keyboard navigation
+   * Filter messages based on search term
    */
-  const handleKeyDown = useCallback((event) => {
-    if (!keyboardNavigation) return;
-
-    switch (event.key) {
-      case 'Enter':
-        if (event.shiftKey) {
-          // Allow new line
-          return;
-        } else {
-          // Send message
-          event.preventDefault();
-          handleSubmit(event);
-        }
-        break;
-      case 'Escape':
-        // Clear message
-        setMessage('');
-        if (screenReader) {
-          announce('Message cleared', 'polite');
-        }
-        break;
-      case 'F6':
-        // Focus chat input
-        event.preventDefault();
-        inputRef.current?.focus();
-        break;
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredMessages(messages);
+    } else {
+      const filtered = messages.filter(message =>
+        message.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        message.username.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredMessages(filtered);
     }
-  }, [keyboardNavigation, handleSubmit, screenReader, announce]);
-
-  /**
-   * Handle focus events
-   */
-  const handleFocus = useCallback(() => {
-    setIsFocused(true);
-    if (screenReader) {
-      announce('Chat input focused', 'polite');
-    }
-  }, [screenReader, announce]);
-
-  const handleBlur = useCallback(() => {
-    setIsFocused(false);
-    if (screenReader) {
-      announce('Chat input focus lost', 'polite');
-    }
-  }, [screenReader, announce]);
+  }, [messages, searchTerm]);
 
   /**
    * Auto-scroll to bottom when new messages arrive
    */
   useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages, scrollToBottom]);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   /**
-   * Handle component cleanup
+   * Handle new message
    */
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      if (typingIndicatorTimeoutRef.current) {
-        clearTimeout(typingIndicatorTimeoutRef.current);
-      }
+  const handleNewMessage = useCallback((messageData) => {
+    const newMessage = {
+      id: messageData.id || `msg-${Date.now()}-${Math.random()}`,
+      text: messageData.text,
+      username: messageData.username,
+      userId: messageData.userId,
+      timestamp: messageData.timestamp || Date.now(),
+      type: messageData.type || 'message',
+      color: messageData.color || '#000000'
     };
+
+    setMessages(prev => {
+      const updated = [...prev, newMessage];
+      return updated.slice(-MAX_MESSAGES); // Keep only last MAX_MESSAGES
+    });
+
+    // Add to activity feed
+    addActivity({
+      type: 'message',
+      description: `${messageData.username} sent a message`,
+      details: messageData.text,
+      timestamp: Date.now(),
+      userId: messageData.userId,
+      username: messageData.username
+    });
+
+    // Show notification if not focused or from other user
+    if (!isFocused || messageData.userId !== user?.userId) {
+      showNotification({
+        type: 'message',
+        title: 'New Message',
+        message: `${messageData.username}: ${messageData.text}`,
+        duration: NOTIFICATION_DURATION
+      });
+    }
+
+    // Announce to screen readers
+    if (screenReader) {
+      announce(`New message from ${messageData.username}: ${messageData.text}`, 'polite');
+    }
+  }, [isFocused, user, screenReader, announce]);
+
+  /**
+   * Handle user join
+   */
+  const handleUserJoin = useCallback((userData) => {
+    const activity = {
+      type: 'join',
+      description: `${userData.username} joined the room`,
+      details: `User joined at ${new Date().toLocaleTimeString()}`,
+      timestamp: Date.now(),
+      userId: userData.userId,
+      username: userData.username
+    };
+
+    addActivity(activity);
+
+    // Show notification
+    if (notificationSettings.joinLeaveEnabled) {
+      showNotification({
+        type: 'join',
+        title: 'User Joined',
+        message: `${userData.username} joined the room`,
+        duration: NOTIFICATION_DURATION
+      });
+    }
+
+    // Announce to screen readers
+    if (screenReader) {
+      announce(`${userData.username} joined the room`, 'polite');
+    }
+
+    // Play join sound
+    if (notificationSettings.soundEnabled) {
+      playNotificationSound('join');
+    }
+  }, [notificationSettings, screenReader, announce]);
+
+  /**
+   * Handle user leave
+   */
+  const handleUserLeave = useCallback((userData) => {
+    const activity = {
+      type: 'leave',
+      description: `${userData.username} left the room`,
+      details: `User left at ${new Date().toLocaleTimeString()}`,
+      timestamp: Date.now(),
+      userId: userData.userId,
+      username: userData.username
+    };
+
+    addActivity(activity);
+
+    // Show notification
+    if (notificationSettings.joinLeaveEnabled) {
+      showNotification({
+        type: 'leave',
+        title: 'User Left',
+        message: `${userData.username} left the room`,
+        duration: NOTIFICATION_DURATION
+      });
+    }
+
+    // Announce to screen readers
+    if (screenReader) {
+      announce(`${userData.username} left the room`, 'polite');
+    }
+
+    // Play leave sound
+    if (notificationSettings.soundEnabled) {
+      playNotificationSound('leave');
+    }
+  }, [notificationSettings, screenReader, announce]);
+
+  /**
+   * Handle typing start
+   */
+  const handleTypingStart = useCallback((userData) => {
+    setTypingUsers(prev => ({
+      ...prev,
+      [userData.userId]: {
+        username: userData.username,
+        timestamp: Date.now()
+      }
+    }));
+
+    // Add to activity feed
+    addActivity({
+      type: 'typing',
+      description: `${userData.username} is typing`,
+      details: `Started typing at ${new Date().toLocaleTimeString()}`,
+      timestamp: Date.now(),
+      userId: userData.userId,
+      username: userData.username
+    });
+
+    // Show notification if enabled
+    if (notificationSettings.typingEnabled && userData.userId !== user?.userId) {
+      showNotification({
+        type: 'typing',
+        title: 'User Typing',
+        message: `${userData.username} is typing...`,
+        duration: 2000
+      });
+    }
+  }, [notificationSettings, user]);
+
+  /**
+   * Handle typing stop
+   */
+  const handleTypingStop = useCallback((userData) => {
+    setTypingUsers(prev => {
+      const newTypingUsers = { ...prev };
+      delete newTypingUsers[userData.userId];
+      return newTypingUsers;
+    });
   }, []);
 
   /**
-   * Format message timestamp
+   * Handle drawing event
    */
-  const formatTimestamp = (timestamp) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+  const handleDrawingEvent = useCallback((eventData) => {
+    const activity = {
+      type: 'drawing',
+      description: `${eventData.username} drew something`,
+      details: `Used ${eventData.tool} tool`,
+      timestamp: Date.now(),
+      userId: eventData.userId,
+      username: eventData.username
+    };
+
+    addActivity(activity);
+
+    // Show notification if enabled
+    if (notificationSettings.drawingEnabled && eventData.userId !== user?.userId) {
+      showNotification({
+        type: 'drawing',
+        title: 'Drawing Activity',
+        message: `${eventData.username} drew something`,
+        duration: NOTIFICATION_DURATION
+      });
+    }
+
+    // Announce to screen readers
+    if (screenReader) {
+      announce(`${eventData.username} drew something`, 'polite');
+    }
+  }, [notificationSettings, user, screenReader, announce]);
+
+  /**
+   * Add activity to feed
+   */
+  const addActivity = useCallback((activity) => {
+    setActivities(prev => {
+      const updated = [...prev, activity];
+      return updated.slice(-MAX_ACTIVITIES); // Keep only last MAX_ACTIVITIES
     });
-  };
+
+    setRecentActivities(prev => {
+      const updated = [...prev, activity];
+      return updated.slice(-10); // Keep only last 10 for recent activities
+    });
+  }, []);
 
   /**
-   * Get message type icon
+   * Show notification
    */
-  const getMessageTypeIcon = (type) => {
-    switch (type) {
-      case 'system':
-        return '🔔';
-      case 'announcement':
-        return '📢';
-      case 'error':
-        return '⚠️';
-      case 'success':
-        return '✅';
-      case 'info':
-        return 'ℹ️';
-      default:
-        return '💬';
+  const showNotification = useCallback((notification) => {
+    const notificationId = `notif-${Date.now()}-${Math.random()}`;
+    const newNotification = {
+      ...notification,
+      id: notificationId,
+      timestamp: Date.now()
+    };
+
+    setNotifications(prev => [...prev, newNotification]);
+
+    // Auto-remove notification
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    }, notification.duration || NOTIFICATION_DURATION);
+  }, []);
+
+  /**
+   * Play notification sound
+   */
+  const playNotificationSound = useCallback((type) => {
+    if (!audioContextRef.current) return;
+
+    const audioContext = audioContextRef.current;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // Different frequencies for different notification types
+    const frequencies = {
+      message: [800, 600],
+      join: [1000, 800, 600],
+      leave: [600, 400, 200],
+      typing: [400],
+      drawing: [1200, 1000]
+    };
+
+    const freq = frequencies[type] || [800];
+    let currentTime = audioContext.currentTime;
+
+    freq.forEach((frequency, index) => {
+      oscillator.frequency.setValueAtTime(frequency, currentTime);
+      gainNode.gain.setValueAtTime(0.1, currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.2);
+      currentTime += 0.2;
+    });
+
+    oscillator.start();
+    oscillator.stop(currentTime);
+  }, []);
+
+  /**
+   * Send message
+   */
+  const sendMessage = useCallback(() => {
+    if (!newMessage.trim() || !connected || !sendEvent) return;
+
+    const messageData = {
+      id: `msg-${Date.now()}-${Math.random()}`,
+      text: newMessage.trim(),
+      username: user?.username || 'Anonymous',
+      userId: user?.userId,
+      timestamp: Date.now(),
+      type: 'message',
+      color: user?.preferences?.cursorColor || '#000000'
+    };
+
+    // Send to server
+    sendEvent('chat-message', {
+      roomId,
+      message: messageData
+    });
+
+    // Add to local messages immediately
+    handleNewMessage(messageData);
+
+    // Clear input
+    setNewMessage('');
+
+    // Stop typing indicator
+    setIsTyping(false);
+    if (sendEvent) {
+      sendEvent('typing-stop', {
+        roomId,
+        userId: user?.userId
+      });
     }
-  };
+  }, [newMessage, connected, sendEvent, user, roomId, handleNewMessage]);
 
   /**
-   * Get message type class
+   * Handle input change
    */
-  const getMessageTypeClass = (type) => {
-    switch (type) {
-      case 'system':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'announcement':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'error':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'success':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'info':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-      default:
-        return 'bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100';
+  const handleInputChange = useCallback((e) => {
+    setNewMessage(e.target.value);
+
+    // Start typing indicator
+    if (!isTyping && connected && sendEvent) {
+      setIsTyping(true);
+      sendEvent('typing-start', {
+        roomId,
+        userId: user?.userId,
+        username: user?.username
+      });
     }
-  };
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set new timeout
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      if (sendEvent) {
+        sendEvent('typing-stop', {
+          roomId,
+          userId: user?.userId
+        });
+      }
+    }, TYPING_TIMEOUT);
+  }, [isTyping, connected, sendEvent, user, roomId]);
 
   /**
-   * Get chat status for screen readers
+   * Handle key press
    */
-  const getChatStatus = () => {
-    const messageCount = chatMessages.length;
-    const typingCount = typingUsers.size;
-    const participantCount = participants ? Object.keys(participants).length : 0;
-    
-    return `Chat: ${messageCount} messages, ${participantCount} participants${typingCount > 0 ? `, ${typingCount} typing` : ''}. ${connected ? 'Connected' : 'Disconnected'}.`;
-  };
+  const handleKeyPress = useCallback((e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }, [sendMessage]);
 
-  return (
-    <div className={`${compact ? 'h-full' : 'h-96'} flex flex-col bg-white dark:bg-gray-900`}>
-      {/* Chat Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-        <div className="flex items-center space-x-2">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Chat
-          </h3>
-          {participants && (
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              ({Object.keys(participants).length})
+  /**
+   * Handle focus
+   */
+  const handleFocus = useCallback(() => {
+    setIsFocused(true);
+    setUnreadCount(0);
+  }, []);
+
+  /**
+   * Handle blur
+   */
+  const handleBlur = useCallback(() => {
+    setIsFocused(false);
+  }, []);
+
+  /**
+   * Filter activities
+   */
+  const filteredActivities = useMemo(() => {
+    if (activityFilter === 'all') return activities;
+    return activities.filter(activity => activity.type === activityFilter);
+  }, [activities, activityFilter]);
+
+  /**
+   * Render message
+   */
+  const renderMessage = useCallback((message) => {
+    const isOwnMessage = message.userId === user?.userId;
+    const messageTime = new Date(message.timestamp).toLocaleTimeString();
+
+    return (
+      <div
+        key={message.id}
+        className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-2`}
+        role="listitem"
+      >
+        <div
+          className={`max-w-xs px-3 py-2 rounded-lg ${
+            isOwnMessage
+              ? 'bg-primary-500 text-white'
+              : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+          }`}
+          style={isOwnMessage ? {} : { borderLeft: `4px solid ${message.color}` }}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium opacity-75">
+              {message.username}
             </span>
-          )}
+            <span className="text-xs opacity-75">
+              {messageTime}
+            </span>
+          </div>
+          <p className="text-sm">{message.text}</p>
         </div>
+      </div>
+    );
+  }, [user]);
 
-        <div className="flex items-center space-x-2">
-          {/* Connection Status */}
-          <div className="flex items-center space-x-1">
-            <div 
-              className={`w-2 h-2 rounded-full ${
-                connected ? 'bg-green-500' : 'bg-red-500'
-              }`}
-              aria-label={connected ? 'Connected' : 'Disconnected'}
-            />
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {connected ? 'Connected' : 'Disconnected'}
+  /**
+   * Render typing indicator
+   */
+  const renderTypingIndicator = useCallback(() => {
+    const typingUsersList = Object.values(typingUsers);
+    if (typingUsersList.length === 0) return null;
+
+    return (
+      <div className="flex items-center space-x-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+        <div className="flex space-x-1">
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+        </div>
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          {typingUsersList.map((typingUser, index) => (
+            <span key={typingUser.username}>
+              {typingUser.username} is typing
+              {index < typingUsersList.length - 1 ? ', ' : ''}
             </span>
+          ))}
+        </span>
+      </div>
+    );
+  }, [typingUsers]);
+
+  /**
+   * Render activity item
+   */
+  const renderActivityItem = useCallback((activity) => {
+    const activityTime = new Date(activity.timestamp).toLocaleTimeString();
+    const activityIcons = {
+      message: '💬',
+      join: '👋',
+      leave: '👋',
+      typing: '⌨️',
+      drawing: '🎨'
+    };
+
+    return (
+      <div
+        key={`${activity.timestamp}-${activity.userId}`}
+        className="flex items-start space-x-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded"
+        role="listitem"
+      >
+        <span className="text-sm">{activityIcons[activity.type] || '📝'}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-900 dark:text-gray-100">
+            {activity.description}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {activityTime}
+          </p>
+        </div>
+      </div>
+    );
+  }, []);
+
+  /**
+   * Render notification
+   */
+  const renderNotification = useCallback((notification) => {
+    const notificationIcons = {
+      message: '💬',
+      join: '👋',
+      leave: '👋',
+      typing: '⌨️',
+      drawing: '🎨'
+    };
+
+    return (
+      <div
+        key={notification.id}
+        className="fixed top-4 right-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 max-w-sm z-50"
+        role="alert"
+        aria-live="polite"
+      >
+        <div className="flex items-start space-x-2">
+          <span className="text-lg">{notificationIcons[notification.type] || '📝'}</span>
+          <div className="flex-1">
+            <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              {notification.title}
+            </h4>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {notification.message}
+            </p>
           </div>
         </div>
       </div>
+    );
+  }, []);
 
-      {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {chatMessages.length === 0 ? (
-          <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-            <p>No messages yet. Start the conversation!</p>
-          </div>
-        ) : (
-          chatMessages.map((msg, index) => (
-            <div
-              key={index}
-              className={`p-3 rounded-lg max-w-xs ${
-                msg.userId === user?.userId ? 'ml-auto' : 'mr-auto'
-              } ${getMessageTypeClass(msg.messageType)}`}
-              role="listitem"
-              aria-label={`Message from ${msg.username || 'Unknown'}`}
-            >
-              {/* Message Header */}
-              <div className="flex items-center space-x-2 mb-1">
-                <span className="text-sm font-medium">
-                  {msg.username || 'Unknown User'}
-                </span>
-                <span className="text-xs opacity-75">
-                  {formatTimestamp(msg.timestamp)}
-                </span>
-                <span className="text-xs">
-                  {getMessageTypeIcon(msg.messageType)}
-                </span>
-              </div>
+  if (!isVisible) return null;
 
-              {/* Message Content */}
-              <div className="text-sm break-words">
-                {msg.message}
-              </div>
-            </div>
-          ))
-        )}
-
-        {/* Typing Indicators */}
-        {typingUsers.size > 0 && (
-          <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
-            <div className="flex space-x-1">
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-            </div>
-            <span>
-              {Array.from(typingUsers).join(', ')} {typingUsers.size === 1 ? 'is' : 'are'} typing...
+  return (
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700">
+      {/* Chat Header */}
+      <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          Chat
+          {unreadCount > 0 && (
+            <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+              {unreadCount}
             </span>
-          </div>
-        )}
+          )}
+        </h2>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowActivityFeed(!showActivityFeed)}
+            className="btn btn-sm btn-outline"
+            aria-label="Toggle activity feed"
+            title="Toggle activity feed"
+          >
+            📊
+          </button>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="btn btn-sm btn-outline"
+            aria-label="Notification settings"
+            title="Notification settings"
+          >
+            ⚙️
+          </button>
+        </div>
+      </div>
 
-        {/* Scroll anchor */}
+      {/* Activity Feed */}
+      {showActivityFeed && (
+        <div className="border-b border-gray-200 dark:border-gray-700">
+          <div className="p-2 bg-gray-50 dark:bg-gray-800">
+            <div className="flex items-center space-x-2 mb-2">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                Recent Activity
+              </h3>
+              <select
+                value={activityFilter}
+                onChange={(e) => setActivityFilter(e.target.value)}
+                className="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700"
+                aria-label="Filter activities"
+              >
+                <option value="all">All</option>
+                <option value="message">Messages</option>
+                <option value="join">Joins</option>
+                <option value="leave">Leaves</option>
+                <option value="typing">Typing</option>
+                <option value="drawing">Drawing</option>
+              </select>
+            </div>
+            <div className="max-h-32 overflow-y-auto">
+              {recentActivities.slice(-5).map(renderActivityItem)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-3 space-y-2"
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        tabIndex={0}
+        role="log"
+        aria-label="Chat messages"
+        aria-live="polite"
+      >
+        {filteredMessages.map(renderMessage)}
+        {renderTypingIndicator()}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Message Input */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-3">
-        <form onSubmit={handleSubmit} className="space-y-2">
-          {/* Message Type Selector */}
-          <div className="flex items-center space-x-2">
-            <label htmlFor="message-type" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Type:
-            </label>
-            <select
-              id="message-type"
-              value={messageType}
-              onChange={(e) => setMessageType(e.target.value)}
-              className="input text-sm py-1 px-2"
-              aria-describedby="message-type-help"
-            >
-              <option value="text">Text</option>
-              <option value="announcement">Announcement</option>
-              <option value="info">Info</option>
-              <option value="success">Success</option>
-              <option value="error">Error</option>
-            </select>
-            <p id="message-type-help" className="sr-only">
-              Select message type
-            </p>
-          </div>
-
-          {/* Message Input */}
-          <div className="flex space-x-2">
-            <textarea
-              ref={inputRef}
-              value={message}
-              onChange={handleMessageChange}
-              onKeyDown={handleKeyDown}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              placeholder="Type your message... (Shift+Enter for new line)"
-              className="flex-1 input resize-none"
-              rows={2}
-              aria-label="Chat message input"
-              aria-describedby="message-help"
-              disabled={!connected}
-            />
-            
-            <button
-              type="submit"
-              disabled={!message.trim() || !connected}
-              className="btn btn-primary px-4 py-2"
-              aria-label="Send message"
-            >
-              Send
-            </button>
-          </div>
-          
-          <p id="message-help" className="text-xs text-gray-500 dark:text-gray-400">
-            Press Enter to send, Shift+Enter for new line. {getChatStatus()}
-          </p>
-        </form>
+      <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex space-x-2">
+          <input
+            ref={messageInputRef}
+            type="text"
+            value={newMessage}
+            onChange={handleInputChange}
+            onKeyPress={handleKeyPress}
+            placeholder="Type a message..."
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+            aria-label="Message input"
+            aria-describedby="message-help"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!newMessage.trim() || !connected}
+            className="btn btn-primary"
+            aria-label="Send message"
+            title="Send message (Enter)"
+          >
+            Send
+          </button>
+        </div>
+        <div id="message-help" className="sr-only">
+          Press Enter to send message, Shift+Enter for new line
+        </div>
       </div>
+
+      {/* Notifications */}
+      {notifications.map(renderNotification)}
 
       {/* Screen Reader Status */}
-      <div 
-        className="sr-only" 
-        aria-live="polite" 
-        aria-atomic="true"
-        id="chat-status"
-      >
-        {getChatStatus()}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {unreadCount > 0 && `${unreadCount} unread messages`}
+        {Object.keys(typingUsers).length > 0 && `${Object.keys(typingUsers).length} users typing`}
       </div>
-
-      {/* Keyboard Shortcuts Help */}
-      {keyboardNavigation && (
-        <div className="sr-only" id="chat-keyboard-shortcuts">
-          <h3>Keyboard Shortcuts</h3>
-          <ul>
-            <li>F6: Focus chat input</li>
-            <li>Enter: Send message</li>
-            <li>Shift+Enter: New line</li>
-            <li>Escape: Clear message</li>
-            <li>Tab: Navigate between elements</li>
-            <li>Arrow keys: Navigate messages</li>
-          </ul>
-        </div>
-      )}
     </div>
   );
 };
