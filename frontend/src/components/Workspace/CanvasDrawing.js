@@ -60,7 +60,7 @@ const CanvasDrawing = ({ onDrawingChange, participants }) => {
     const fabricCanvas = new fabric.Canvas(canvasRef.current, {
       width: canvasRef.current.offsetWidth,
       height: canvasRef.current.offsetHeight,
-      backgroundColor: '#ffffff',
+        backgroundColor: '#ffffff',
       selection: true,
       preserveObjectStacking: true,
     });
@@ -452,13 +452,13 @@ const CanvasDrawing = ({ onDrawingChange, participants }) => {
     <div className="h-full flex flex-col bg-white dark:bg-gray-900">
       {/* Canvas Toolbar */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             Collaborative Drawing
           </h2>
           
           {/* Drawing Tools */}
-          <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2">
             <label htmlFor="tool-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Tool:
             </label>
@@ -500,21 +500,21 @@ const CanvasDrawing = ({ onDrawingChange, participants }) => {
             <p id="color-help" className="sr-only">
               Select drawing color
             </p>
-          </div>
+            </div>
 
           {/* Brush Size */}
-          <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2">
             <label htmlFor="brush-size" className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Size:
             </label>
-            <input
-              id="brush-size"
-              type="range"
-              min="1"
+              <input
+                id="brush-size"
+                type="range"
+                min="1"
               max="50"
-              value={brushSize}
+                value={brushSize}
               onChange={(e) => handleBrushSizeChange(parseInt(e.target.value))}
-              className="w-20"
+                className="w-20"
               aria-describedby="brush-size-help"
             />
             <span className="text-sm text-gray-600 dark:text-gray-400">{brushSize}px</span>
@@ -522,7 +522,7 @@ const CanvasDrawing = ({ onDrawingChange, participants }) => {
               Adjust brush size
             </p>
           </div>
-        </div>
+            </div>
 
         <div className="flex items-center space-x-4">
           {/* Status Indicators */}
@@ -551,7 +551,7 @@ const CanvasDrawing = ({ onDrawingChange, participants }) => {
               <div className="flex items-center space-x-1 text-orange-600 dark:text-orange-400">
                 <div className="w-2 h-2 bg-orange-500 rounded-full" />
                 <span>Unsaved changes</span>
-              </div>
+            </div>
             )}
           </div>
 
@@ -586,8 +586,8 @@ const CanvasDrawing = ({ onDrawingChange, participants }) => {
 
       {/* Canvas Container */}
       <div className="flex-1 relative">
-        <canvas
-          ref={canvasRef}
+          <canvas
+            ref={canvasRef}
           className="w-full h-full border-0 focus:outline-none focus:ring-2 focus:ring-primary-500"
           tabIndex={0}
           aria-label="Collaborative drawing canvas"
