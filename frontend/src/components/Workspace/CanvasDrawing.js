@@ -11,7 +11,7 @@
  * - User presence and cursor tracking
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
@@ -29,20 +29,18 @@ const CanvasDrawing = ({
   onRoomUpdate 
 }) => {
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
-  const { socket, connected, sendEvent } = useSocket();
+  const { connected, sendEvent } = useSocket();
   const { user } = useUser();
 
   // Canvas and drawing state
   const [canvas, setCanvas] = useState(null);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [currentTool, setCurrentTool] = useState('pen');
   const [currentColor, setCurrentColor] = useState('#000000');
   const [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
-  const [currentOpacity, setCurrentOpacity] = useState(1);
-  const [isEraser, setIsEraser] = useState(false);
+  const [currentOpacity] = useState(1);
 
   // Drawing tools configuration
-  const [tools, setTools] = useState({
+  const [tools] = useState({
     pen: { name: 'Pen', icon: '✏️', shortcut: 'p' },
     brush: { name: 'Brush', icon: '🖌️', shortcut: 'b' },
     marker: { name: 'Marker', icon: '🖍️', shortcut: 'm' },
@@ -61,9 +59,6 @@ const CanvasDrawing = ({
     '#FFC0CB', '#A52A2A', '#808080', '#000080', '#008000'
   ]);
 
-  // Stroke width options
-  const [strokeWidths] = useState([1, 2, 4, 8, 16, 32]);
-
   // Voice commands state
   const [voiceCommandsEnabled, setVoiceCommandsEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -72,13 +67,14 @@ const CanvasDrawing = ({
 
   // Textual descriptions for accessibility
   const [drawingDescriptions, setDrawingDescriptions] = useState([]);
-  const [currentDescription, setCurrentDescription] = useState('');
   const [descriptionLog, setDescriptionLog] = useState([]);
+
+  // Drawing state
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [isEraser, setIsEraser] = useState(false);
 
   // User presence and cursor tracking
   const [userCursors, setUserCursors] = useState({});
-  const [userSelections, setUserSelections] = useState({});
-  const [activeUsers, setActiveUsers] = useState({});
 
   // Drawing history and undo/redo
   const [drawingHistory, setDrawingHistory] = useState([]);
@@ -87,7 +83,7 @@ const CanvasDrawing = ({
   const [canRedo, setCanRedo] = useState(false);
 
   // Canvas settings
-  const [canvasSettings, setCanvasSettings] = useState({
+  const [canvasSettings] = useState({
     backgroundColor: '#FFFFFF',
     gridEnabled: false,
     snapToGrid: false,
@@ -103,108 +99,10 @@ const CanvasDrawing = ({
   const lastPointRef = useRef(null);
   const isDrawingRef = useRef(false);
   const currentPathRef = useRef([]);
-  const voiceTimeoutRef = useRef(null);
 
   // Drawing constants
   const MIN_STROKE_WIDTH = 1;
   const MAX_STROKE_WIDTH = 50;
-  const MIN_OPACITY = 0.1;
-  const MAX_OPACITY = 1.0;
-
-  /**
-   * Initialize Fabric.js canvas
-   */
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    // Initialize Fabric.js canvas
-    const fabricCanvas = new window.fabric.Canvas(canvasRef.current, {
-      width: 800,
-      height: 600,
-      backgroundColor: canvasSettings.backgroundColor,
-      selection: true,
-      preserveObjectStacking: true,
-      renderOnAddRemove: true,
-      skipTargetFind: false,
-      skipOffscreen: false
-    });
-
-    // Configure canvas settings
-    fabricCanvas.freeDrawingBrush.width = currentStrokeWidth;
-    fabricCanvas.freeDrawingBrush.color = currentColor;
-    fabricCanvas.freeDrawingBrush.opacity = currentOpacity;
-
-    setCanvas(fabricCanvas);
-
-    // Load existing canvas data
-    if (roomData?.canvas) {
-      fabricCanvas.loadFromJSON(roomData.canvas, () => {
-        fabricCanvas.renderAll();
-        generateCanvasDescription();
-      });
-    }
-
-    // Cleanup function
-    return () => {
-      if (fabricCanvas) {
-        fabricCanvas.dispose();
-      }
-    };
-  }, []);
-
-  /**
-   * Initialize Web Speech API
-   */
-  useEffect(() => {
-    if (!voiceCommandsEnabled) return;
-
-    // Check for speech recognition support
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      console.warn('Speech recognition not supported in this browser');
-      setVoiceCommandsEnabled(false);
-      return;
-    }
-
-    // Initialize speech recognition
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      if (screenReader) {
-        announce('Voice commands activated', 'polite');
-      }
-    };
-
-    recognition.onresult = (event) => {
-      const command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-      processVoiceCommand(command);
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      setIsListening(false);
-      if (screenReader) {
-        announce('Voice command error', 'polite');
-      }
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    setSpeechRecognition(recognition);
-
-    return () => {
-      if (recognition) {
-        recognition.stop();
-      }
-    };
-  }, [voiceCommandsEnabled, screenReader, announce]);
 
   /**
    * Process voice commands
@@ -270,14 +168,139 @@ const CanvasDrawing = ({
     } else if (commandLower.includes('save')) {
       handleSaveCanvas();
     }
+  }, [screenReader, announce, setCurrentTool, setCurrentColor]);
+
+  /**
+   * Generate textual description of canvas content
+   */
+  const generateCanvasDescription = useCallback(() => {
+    if (!canvas) return;
+
+    const objects = canvas.getObjects();
+    const descriptions = [];
+
+    objects.forEach((obj, index) => {
+      let description = '';
+      
+      if (obj.type === 'rect') {
+        description = `Rectangle ${index + 1}: ${obj.width}x${obj.height} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      } else if (obj.type === 'circle') {
+        description = `Circle ${index + 1}: radius ${Math.round(obj.radius)} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      } else if (obj.type === 'line') {
+        description = `Line ${index + 1}: from (${Math.round(obj.x1)}, ${Math.round(obj.y1)}) to (${Math.round(obj.x2)}, ${Math.round(obj.y2)}), color ${obj.stroke}`;
+      } else if (obj.type === 'text') {
+        description = `Text ${index + 1}: "${obj.text}", color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      } else if (obj.type === 'path') {
+        description = `Drawing ${index + 1}: ${obj.path.length} points, color ${obj.stroke}, width ${obj.strokeWidth}`;
+      } else {
+        description = `Object ${index + 1}: ${obj.type}, color ${obj.fill || obj.stroke}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      }
+      
+      descriptions.push(description);
+    });
+
+    setDrawingDescriptions(descriptions);
     
-    // Add command to history
-    setVoiceCommandHistory(prev => [...prev, {
-      command,
-      timestamp: Date.now(),
-      processed: true
-    }]);
-  }, [screenReader, announce]);
+    if (screenReader) {
+      announce(`Canvas updated: ${objects.length} objects`, 'polite');
+    }
+  }, [canvas, screenReader, announce, setDrawingDescriptions]);
+
+  /**
+   * Initialize Fabric.js canvas
+   */
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    // Initialize Fabric.js canvas
+    const fabricCanvas = new window.fabric.Canvas(canvasRef.current, {
+      width: 800,
+      height: 600,
+      backgroundColor: canvasSettings.backgroundColor,
+      selection: true,
+      preserveObjectStacking: true,
+      renderOnAddRemove: true,
+      skipTargetFind: false,
+      skipOffscreen: false
+    });
+
+    // Configure canvas settings
+    fabricCanvas.freeDrawingBrush.width = currentStrokeWidth;
+    fabricCanvas.freeDrawingBrush.color = currentColor;
+    fabricCanvas.freeDrawingBrush.opacity = currentOpacity;
+
+    setCanvas(fabricCanvas);
+
+    // Load existing canvas data
+    if (roomData?.canvas) {
+      fabricCanvas.loadFromJSON(roomData.canvas, () => {
+        fabricCanvas.renderAll();
+        generateCanvasDescription();
+      });
+    }
+
+    // Cleanup function
+    return () => {
+      if (fabricCanvas) {
+        fabricCanvas.dispose();
+      }
+    };
+  }, [canvasSettings.backgroundColor, currentColor, currentOpacity, currentStrokeWidth, generateCanvasDescription, roomData?.canvas]);
+
+  /**
+   * Initialize Web Speech API
+   */
+  useEffect(() => {
+    if (!voiceCommandsEnabled) return;
+
+    // Check for speech recognition support
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      console.warn('Speech recognition not supported in this browser');
+      setVoiceCommandsEnabled(false);
+      return;
+    }
+
+    // Initialize speech recognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      if (screenReader) {
+        announce('Voice commands activated', 'polite');
+      }
+    };
+
+    recognition.onresult = (event) => {
+      const command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+      processVoiceCommand(command);
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+      if (screenReader) {
+        announce('Voice command error', 'polite');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    setSpeechRecognition(recognition);
+
+    return () => {
+      if (recognition) {
+        recognition.stop();
+      }
+    };
+  }, [voiceCommandsEnabled, screenReader, announce, processVoiceCommand]);
+
 
   /**
    * Start voice recognition
@@ -312,51 +335,6 @@ const CanvasDrawing = ({
     });
   }, [startVoiceRecognition, stopVoiceRecognition]);
 
-  /**
-   * Generate textual description of canvas content
-   */
-  const generateCanvasDescription = useCallback(() => {
-    if (!canvas) return;
-
-    const objects = canvas.getObjects();
-    const descriptions = [];
-
-    objects.forEach((obj, index) => {
-      let description = '';
-      
-      if (obj.type === 'rect') {
-        description = `Rectangle ${index + 1}: ${obj.width}x${obj.height} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'circle') {
-        description = `Circle ${index + 1}: radius ${Math.round(obj.radius)} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'line') {
-        description = `Line ${index + 1}: from (${Math.round(obj.x1)}, ${Math.round(obj.y1)}) to (${Math.round(obj.x2)}, ${Math.round(obj.y2)}), color ${obj.stroke}`;
-      } else if (obj.type === 'text') {
-        description = `Text ${index + 1}: "${obj.text}", color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'path') {
-        description = `Drawing ${index + 1}: ${obj.path.length} points, color ${obj.stroke}, width ${obj.strokeWidth}`;
-      } else {
-        description = `Object ${index + 1}: ${obj.type}, color ${obj.fill || obj.stroke}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      }
-      
-      descriptions.push(description);
-    });
-
-    setDrawingDescriptions(descriptions);
-    
-    // Update description log
-    const logEntry = {
-      timestamp: Date.now(),
-      action: 'canvas_updated',
-      description: `Canvas now contains ${objects.length} objects`,
-      details: descriptions
-    };
-    
-    setDescriptionLog(prev => [...prev, logEntry]);
-    
-    if (screenReader) {
-      announce(`Canvas updated: ${objects.length} objects`, 'polite');
-    }
-  }, [canvas, screenReader, announce]);
 
   /**
    * Handle drawing start
@@ -650,6 +628,9 @@ const CanvasDrawing = ({
           event.preventDefault();
           handleClearCanvas();
           break;
+        default:
+          // No shortcut for this key
+          break;
       }
     }
 
@@ -681,6 +662,9 @@ const CanvasDrawing = ({
         break;
       case 's':
         handleToolChange('select');
+        break;
+      default:
+        // No tool shortcut for this key
         break;
     }
   }, [keyboardNavigation, handleRedo, handleUndo, handleSaveCanvas, handleClearCanvas, handleToolChange]);
@@ -882,8 +866,6 @@ const CanvasDrawing = ({
         <div
           ref={containerRef}
           className="h-full w-full relative"
-          onKeyDown={handleKeyDown}
-          tabIndex={0}
           role="application"
           aria-label="Drawing canvas"
           aria-describedby="canvas-help"
@@ -897,6 +879,8 @@ const CanvasDrawing = ({
             onTouchStart={handleDrawingStart}
             onTouchMove={handleDrawingMove}
             onTouchEnd={handleDrawingEnd}
+            onKeyDown={handleKeyDown}
+            tabIndex={0}
             aria-label="Drawing canvas"
             role="img"
           />

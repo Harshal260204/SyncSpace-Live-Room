@@ -29,8 +29,8 @@ const ChatPanel = ({
   onRoomUpdate,
   isVisible = true 
 }) => {
-  const { announce, screenReader, keyboardNavigation } = useAccessibility();
-  const { socket, connected, sendEvent } = useSocket();
+  const { announce, screenReader } = useAccessibility();
+  const { connected, sendEvent } = useSocket();
   const { user } = useUser();
 
   // Chat state
@@ -48,7 +48,7 @@ const ChatPanel = ({
 
   // Notification state
   const [notifications, setNotifications] = useState([]);
-  const [notificationSettings, setNotificationSettings] = useState({
+  const [notificationSettings] = useState({
     soundEnabled: true,
     visualEnabled: true,
     joinLeaveEnabled: true,
@@ -68,7 +68,6 @@ const ChatPanel = ({
   const messageInputRef = useRef(null);
   const chatContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
-  const notificationTimeoutRef = useRef(null);
   const audioContextRef = useRef(null);
 
   // Constants
@@ -166,7 +165,7 @@ const ChatPanel = ({
     if (screenReader) {
       announce(`New message from ${messageData.username}: ${messageData.text}`, 'polite');
     }
-  }, [isFocused, user, screenReader, announce]);
+  }, [isFocused, user, screenReader, announce, addActivity, showNotification]);
 
   /**
    * Handle user join
@@ -202,7 +201,7 @@ const ChatPanel = ({
     if (notificationSettings.soundEnabled) {
       playNotificationSound('join');
     }
-  }, [notificationSettings, screenReader, announce]);
+  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification]);
 
   /**
    * Handle user leave
@@ -238,7 +237,7 @@ const ChatPanel = ({
     if (notificationSettings.soundEnabled) {
       playNotificationSound('leave');
     }
-  }, [notificationSettings, screenReader, announce]);
+  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification]);
 
   /**
    * Handle typing start
@@ -313,7 +312,7 @@ const ChatPanel = ({
     if (screenReader) {
       announce(`${eventData.username} drew something`, 'polite');
     }
-  }, [notificationSettings, user, screenReader, announce]);
+  }, [notificationSettings, user, screenReader, announce, addActivity, playNotificationSound, showNotification]);
 
   /**
    * Add activity to feed
@@ -685,7 +684,6 @@ const ChatPanel = ({
         className="flex-1 overflow-y-auto p-3 space-y-2"
         onFocus={handleFocus}
         onBlur={handleBlur}
-        tabIndex={0}
         role="log"
         aria-label="Chat messages"
         aria-live="polite"

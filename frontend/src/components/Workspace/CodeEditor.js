@@ -29,7 +29,6 @@ const CodeEditor = ({ onCodeChange, participants }) => {
     connected 
   } = useSocket();
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
-  const { user } = useUser();
 
   // Local state
   const [localContent, setLocalContent] = useState(codeContent || '');
@@ -201,6 +200,9 @@ const CodeEditor = ({ onCodeChange, participants }) => {
           case monacoRef.current.KeyCode.KeyX:
             shortcut = 'Cut';
             break;
+          default:
+            // No shortcut for this key
+            break;
         }
         
         if (shortcut) {
@@ -285,12 +287,15 @@ const CodeEditor = ({ onCodeChange, participants }) => {
             });
           }
           break;
+        default:
+          // No special handling for this key
+          break;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isFocused, keyboardNavigation]);
+  }, [isFocused, keyboardNavigation, setupEventListeners]);
 
   /**
    * Handle component cleanup

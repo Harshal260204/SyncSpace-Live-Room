@@ -9,9 +9,10 @@
  * - User actions and interactions
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useUser } from '../../contexts/UserContext';
+import { useSocket } from '../../contexts/SocketContext';
 
 /**
  * Participants List Component
@@ -22,6 +23,7 @@ import { useUser } from '../../contexts/UserContext';
 const ParticipantsList = ({ participants }) => {
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
   const { user } = useUser();
+  const { connected } = useSocket();
 
   // Local state
   const [selectedUser, setSelectedUser] = useState(null);
@@ -86,7 +88,7 @@ const ParticipantsList = ({ participants }) => {
   /**
    * Sort participants
    */
-  const getSortedParticipants = () => {
+  const getSortedParticipants = useCallback(() => {
     const participantsArray = Object.values(participants);
     
     return participantsArray.sort((a, b) => {
@@ -101,7 +103,7 @@ const ParticipantsList = ({ participants }) => {
           return 0;
       }
     });
-  };
+  }, [participants, sortBy]);
 
   /**
    * Handle user selection
@@ -158,8 +160,11 @@ const ParticipantsList = ({ participants }) => {
           announce('User selection cleared', 'polite');
         }
         break;
+      default:
+        // No action for this key
+        break;
     }
-  }, [keyboardNavigation, isFocused, selectedUser, handleUserSelect, screenReader, announce]);
+  }, [keyboardNavigation, isFocused, selectedUser, handleUserSelect, screenReader, announce, getSortedParticipants]);
 
   /**
    * Handle focus events
@@ -213,6 +218,9 @@ const ParticipantsList = ({ participants }) => {
       case 'kick':
         // Kick user (if moderator)
         break;
+      default:
+        // Unknown action
+        break;
     }
   };
 
@@ -255,14 +263,19 @@ const ParticipantsList = ({ participants }) => {
       <div 
         ref={listRef}
         className="flex-1 overflow-y-auto p-3 space-y-2"
-        tabIndex={0}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
         role="list"
         aria-label="Participants list"
         aria-describedby="participants-help"
       >
+        <button
+          className="sr-only"
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          aria-label="Participants list navigation"
+        >
+          Navigate participants list
+        </button>
         {Object.keys(participants).length === 0 ? (
           <div className="text-center text-gray-500 dark:text-gray-400 py-8">
             <p>No participants yet</p>
@@ -274,13 +287,13 @@ const ParticipantsList = ({ participants }) => {
             const isSelected = selectedUser?.userId === participant.userId;
 
             return (
-              <div
+              <button
                 key={participant.userId}
                 ref={(el) => {
                   if (el) userRefs.current[participant.userId] = el;
                 }}
                 className={`
-                  p-3 rounded-lg border cursor-pointer transition-colors duration-200
+                  w-full p-3 rounded-lg border cursor-pointer transition-colors duration-200 text-left
                   ${isSelected 
                     ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' 
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
@@ -288,10 +301,14 @@ const ParticipantsList = ({ participants }) => {
                   ${isCurrentUser ? 'ring-2 ring-primary-500' : ''}
                 `}
                 onClick={() => handleUserSelect(participant)}
-                role="listitem"
-                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleUserSelect(participant);
+                  }
+                }}
                 aria-label={`${participant.username}, ${activity.text}${isCurrentUser ? ', you' : ''}`}
-                aria-selected={isSelected}
+                aria-pressed={isSelected}
               >
                 {/* User Info */}
                 <div className="flex items-center space-x-3">
@@ -359,7 +376,7 @@ const ParticipantsList = ({ participants }) => {
                     )}
                   </div>
                 )}
-              </div>
+              </button>
             );
           })
         )}

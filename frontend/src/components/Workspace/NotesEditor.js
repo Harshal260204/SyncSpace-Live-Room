@@ -10,7 +10,7 @@
  * - User presence and cursor tracking
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
@@ -28,7 +28,7 @@ const NotesEditor = ({
   onRoomUpdate 
 }) => {
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
-  const { socket, connected, sendEvent } = useSocket();
+  const { connected, sendEvent } = useSocket();
   const { user } = useUser();
 
   // Editor state
@@ -55,15 +55,11 @@ const NotesEditor = ({
   const [typingUsers, setTypingUsers] = useState({});
 
   // Concurrent editing state
-  const [pendingChanges, setPendingChanges] = useState([]);
   const [isProcessingChanges, setIsProcessingChanges] = useState(false);
   const [changeQueue, setChangeQueue] = useState([]);
 
   // Refs
   const editorRef = useRef(null);
-  const contentRef = useRef(null);
-  const cursorRef = useRef(null);
-  const selectionRef = useRef(null);
   const changeTimeoutRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
@@ -80,7 +76,7 @@ const NotesEditor = ({
       setContent(roomData.notes);
       setHasUnsavedChanges(false);
     }
-  }, [roomData?.notes]);
+  }, [roomData?.notes, content]);
 
   /**
    * Handle content changes with debouncing and batching
@@ -114,7 +110,7 @@ const NotesEditor = ({
         processBatchedChanges();
       }
     }, CHANGE_DEBOUNCE_MS);
-  }, [user, isProcessingChanges]);
+  }, [user, isProcessingChanges, processBatchedChanges]);
 
   /**
    * Process batched changes to reduce network traffic
@@ -298,6 +294,9 @@ const NotesEditor = ({
         case 'justify':
           document.execCommand('justifyFull');
           break;
+        default:
+          // Unknown format
+          break;
       }
     } else {
       // Text selected, wrap with formatting
@@ -316,6 +315,9 @@ const NotesEditor = ({
           break;
         case 'strikethrough':
           wrapper.style.textDecoration = 'line-through';
+          break;
+        default:
+          // Unknown format
           break;
       }
       
@@ -362,6 +364,9 @@ const NotesEditor = ({
           event.preventDefault();
           handleSave();
           break;
+        default:
+          // No shortcut for this key
+          break;
       }
     }
 
@@ -407,7 +412,7 @@ const NotesEditor = ({
         announce('Notes saved', 'polite');
       }
     }, SAVE_DEBOUNCE_MS);
-  }, [isSaving, hasUnsavedChanges, content, onRoomUpdate, screenReader, announce]);
+  }, [isSaving, hasUnsavedChanges, content, onRoomUpdate, screenReader, announce, handleSave]);
 
   /**
    * Handle focus events
