@@ -14,6 +14,7 @@ import { Editor } from '@monaco-editor/react';
 import { useSocket } from '../../contexts/SocketContext';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useUser } from '../../contexts/UserContext';
+import { useBlindMode } from '../../contexts/BlindModeContext';
 
 /**
  * Code Editor Component
@@ -26,9 +27,11 @@ const CodeEditor = ({ onCodeChange, participants }) => {
     codeContent, 
     codeLanguage, 
     sendCodeChange, 
-    connected 
+    connected,
+    codeMetadata 
   } = useSocket();
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
+  const { enabled: blindModeEnabled, announceToScreenReader } = useBlindMode();
 
   // Local state
   const [localContent, setLocalContent] = useState(codeContent || '');
@@ -39,6 +42,11 @@ const CodeEditor = ({ onCodeChange, participants }) => {
   const [selection, setSelection] = useState(null);
   const [isFocused, setIsFocused] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Blind Mode state
+  const [lastChangeSummary, setLastChangeSummary] = useState(null);
+  const [changeHistory, setChangeHistory] = useState([]);
+  const [currentFile, setCurrentFile] = useState('main.js');
 
   // Refs
   const editorRef = useRef(null);
@@ -46,10 +54,125 @@ const CodeEditor = ({ onCodeChange, participants }) => {
   const typingTimeoutRef = useRef(null);
   const lastSyncedContentRef = useRef(codeContent || '');
   const isLocalChangeRef = useRef(false);
+  const previousContentRef = useRef(codeContent || '');
+  const changeAnnouncementRef = useRef(null);
 
   // Debounce delay for sending changes (ms)
   const DEBOUNCE_DELAY = 300;
   const TYPING_INDICATOR_DELAY = 1000;
+
+  /**
+   * Analyze code changes for Blind Mode announcements
+   * 
+   * @param {string} oldContent - Previous content
+   * @param {string} newContent - New content
+   * @param {string} author - Author of the change
+   * @param {string} actionType - Type of action (insert, delete, edit)
+   * @returns {Object} Change analysis with summary
+   */
+  const analyzeCodeChange = useCallback((oldContent, newContent, author, actionType = 'edit') => {
+    const oldLines = oldContent.split('\n');
+    const newLines = newContent.split('\n');
+    
+    const linesChanged = Math.abs(newLines.length - oldLines.length);
+    const linesAdded = newLines.length - oldLines.length;
+    const linesRemoved = oldLines.length - newLines.length;
+    
+    // Detect function changes (basic analysis)
+    const detectFunctionChanges = (oldLines, newLines) => {
+      const oldFunctions = oldLines.filter(line => 
+        line.trim().match(/^(function|const|let|var)\s+\w+.*\(/i) ||
+        line.trim().match(/^\w+\s*[:=]\s*(function|\(.*\)\s*=>)/i)
+      );
+      
+      const newFunctions = newLines.filter(line => 
+        line.trim().match(/^(function|const|let|var)\s+\w+.*\(/i) ||
+        line.trim().match(/^\w+\s*[:=]\s*(function|\(.*\)\s*=>)/i)
+      );
+      
+      const addedFunctions = newFunctions.filter(func => 
+        !oldFunctions.some(oldFunc => oldFunc.trim() === func.trim())
+      );
+      
+      const removedFunctions = oldFunctions.filter(func => 
+        !newFunctions.some(newFunc => newFunc.trim() === func.trim())
+      );
+      
+      return { addedFunctions, removedFunctions };
+    };
+    
+    const { addedFunctions, removedFunctions } = detectFunctionChanges(oldLines, newLines);
+    
+    // Generate change summary
+    let summary = '';
+    if (linesAdded > 0) {
+      summary += `${author} added ${linesAdded} line${linesAdded > 1 ? 's' : ''}`;
+    } else if (linesRemoved > 0) {
+      summary += `${author} removed ${linesRemoved} line${linesRemoved > 1 ? 's' : ''}`;
+    } else if (linesChanged > 0) {
+      summary += `${author} modified ${linesChanged} line${linesChanged > 1 ? 's' : ''}`;
+    } else {
+      summary += `${author} made changes`;
+    }
+    
+    summary += ` in ${currentFile}`;
+    
+    // Add function information
+    if (addedFunctions.length > 0) {
+      const functionNames = addedFunctions.map(func => {
+        const match = func.match(/(?:function|const|let|var)\s+(\w+)/i) || 
+                     func.match(/(\w+)\s*[:=]\s*(?:function|\(.*\)\s*=>)/i);
+        return match ? match[1] : 'function';
+      });
+      summary += `, function${functionNames.length > 1 ? 's' : ''} ${functionNames.join(', ')} added`;
+    }
+    
+    if (removedFunctions.length > 0) {
+      const functionNames = removedFunctions.map(func => {
+        const match = func.match(/(?:function|const|let|var)\s+(\w+)/i) || 
+                     func.match(/(\w+)\s*[:=]\s*(?:function|\(.*\)\s*=>)/i);
+        return match ? match[1] : 'function';
+      });
+      summary += `, function${functionNames.length > 1 ? 's' : ''} ${functionNames.join(', ')} removed`;
+    }
+    
+    return {
+      summary,
+      linesChanged: Math.max(linesAdded, linesRemoved, 1),
+      linesAdded,
+      linesRemoved,
+      addedFunctions: addedFunctions.length,
+      removedFunctions: removedFunctions.length,
+      actionType,
+      timestamp: Date.now()
+    };
+  }, [currentFile]);
+
+  /**
+   * Announce code changes for Blind Mode
+   * 
+   * @param {Object} changeAnalysis - Analysis result from analyzeCodeChange
+   * @param {boolean} isLocalChange - Whether this is a local change
+   */
+  const announceCodeChange = useCallback((changeAnalysis, isLocalChange = false) => {
+    if (!blindModeEnabled) return;
+    
+    const announcement = isLocalChange 
+      ? `You ${changeAnalysis.summary.toLowerCase()}` 
+      : changeAnalysis.summary;
+    
+    // Clear any existing announcement
+    if (changeAnnouncementRef.current) {
+      clearTimeout(changeAnnouncementRef.current);
+    }
+    
+    // Announce the change
+    announceToScreenReader(announcement);
+    
+    // Update change history
+    setChangeHistory(prev => [...prev.slice(-9), changeAnalysis]);
+    setLastChangeSummary(changeAnalysis);
+  }, [blindModeEnabled, announceToScreenReader]);
 
   /**
    * Initialize Monaco Editor
@@ -110,11 +233,21 @@ const CodeEditor = ({ onCodeChange, participants }) => {
 
       const content = editor.getValue();
       const language = editor.getModel()?.getLanguageId() || 'javascript';
+      const previousContent = previousContentRef.current;
       
       setLocalContent(content);
       setLocalLanguage(language);
       setHasUnsavedChanges(content !== lastSyncedContentRef.current);
       setLastChangeTime(Date.now());
+
+      // Analyze changes for Blind Mode
+      if (blindModeEnabled && previousContent !== content) {
+        const changeAnalysis = analyzeCodeChange(previousContent, content, 'You', 'edit');
+        announceCodeChange(changeAnalysis, true);
+      }
+      
+      // Update previous content reference
+      previousContentRef.current = content;
 
       // Debounce sending changes to server
       if (typingTimeoutRef.current) {
@@ -220,7 +353,7 @@ const CodeEditor = ({ onCodeChange, participants }) => {
         announce(`Language changed to ${language}`, 'polite');
       }
     });
-  }, [connected, onCodeChange, sendCodeChange, screenReader, announce]);
+  }, [connected, onCodeChange, sendCodeChange, screenReader, announce, blindModeEnabled, analyzeCodeChange, announceCodeChange]);
 
   /**
    * Handle external content changes from other users
@@ -232,17 +365,31 @@ const CodeEditor = ({ onCodeChange, participants }) => {
       isLocalChangeRef.current = true;
       
       if (editorRef.current) {
+        const previousContent = previousContentRef.current;
+        
         editorRef.current.setValue(codeContent);
         setLocalContent(codeContent);
         lastSyncedContentRef.current = codeContent;
         setHasUnsavedChanges(false);
+        
+        // Analyze changes for Blind Mode
+        if (blindModeEnabled && previousContent !== codeContent) {
+          // Extract author from socket metadata if available
+          const author = codeMetadata?.author || 'Another user';
+          const actionType = codeMetadata?.actionType || 'edit';
+          const changeAnalysis = analyzeCodeChange(previousContent, codeContent, author, actionType);
+          announceCodeChange(changeAnalysis, false);
+        }
+        
+        // Update previous content reference
+        previousContentRef.current = codeContent;
         
         if (screenReader) {
           announce('Code updated by another user', 'polite');
         }
       }
     }
-  }, [codeContent, localContent, screenReader, announce]);
+  }, [codeContent, localContent, screenReader, announce, blindModeEnabled, analyzeCodeChange, announceCodeChange, codeMetadata]);
 
   /**
    * Handle language changes from other users
@@ -287,6 +434,18 @@ const CodeEditor = ({ onCodeChange, participants }) => {
             });
           }
           break;
+        case 'd':
+        case 'D':
+          // Ctrl+Shift+D: Read last change summary
+          if (event.ctrlKey && event.shiftKey) {
+            event.preventDefault();
+            if (blindModeEnabled && lastChangeSummary) {
+              announceToScreenReader(`Last change: ${lastChangeSummary.summary}`);
+            } else if (blindModeEnabled) {
+              announceToScreenReader('No recent changes to announce');
+            }
+          }
+          break;
         default:
           // No special handling for this key
           break;
@@ -295,7 +454,7 @@ const CodeEditor = ({ onCodeChange, participants }) => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isFocused, keyboardNavigation, setupEventListeners]);
+  }, [isFocused, keyboardNavigation, setupEventListeners, blindModeEnabled, lastChangeSummary, announceToScreenReader]);
 
   /**
    * Handle component cleanup
@@ -490,6 +649,20 @@ const CodeEditor = ({ onCodeChange, participants }) => {
           {getEditorStatus()}
         </div>
 
+        {/* Blind Mode Change Announcements */}
+        {blindModeEnabled && (
+          <div 
+            className="sr-only" 
+            aria-live="polite" 
+            aria-atomic="true"
+            id="code-change-announcements"
+            role="status"
+            aria-label="Code change announcements"
+          >
+            {/* Dynamic announcements will be inserted here */}
+          </div>
+        )}
+
         {/* Focus Trap for Keyboard Navigation */}
         {keyboardNavigation && (
           <div 
@@ -537,6 +710,9 @@ const CodeEditor = ({ onCodeChange, participants }) => {
             <li>Ctrl+/: Toggle comment</li>
             <li>Alt+Up/Down: Move line up/down</li>
             <li>Shift+Alt+Up/Down: Copy line up/down</li>
+            {blindModeEnabled && (
+              <li>Ctrl+Shift+D: Read last change summary</li>
+            )}
           </ul>
         </div>
       )}

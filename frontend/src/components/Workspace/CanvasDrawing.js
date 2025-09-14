@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
+import { useBlindMode } from '../../contexts/BlindModeContext';
 
 /**
  * Canvas Drawing Component
@@ -31,6 +32,7 @@ const CanvasDrawing = ({
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
   const { connected, sendEvent } = useSocket();
   const { user } = useUser();
+  const { enabled: blindModeEnabled, announceToScreenReader } = useBlindMode();
 
   // Canvas and drawing state
   const [canvas, setCanvas] = useState(null);
@@ -68,6 +70,11 @@ const CanvasDrawing = ({
   // Textual descriptions for accessibility
   const [drawingDescriptions, setDrawingDescriptions] = useState([]);
   const [descriptionLog, setDescriptionLog] = useState([]);
+  
+  // Blind Mode action log
+  const [actionLog, setActionLog] = useState([]);
+  const [lastCanvasAction, setLastCanvasAction] = useState(null);
+  const [showActionLog, setShowActionLog] = useState(false);
 
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
@@ -105,6 +112,135 @@ const CanvasDrawing = ({
   const MAX_STROKE_WIDTH = 50;
 
   /**
+   * Generate action description for Blind Mode
+   * 
+   * @param {string} action - Action type (draw, add, remove, etc.)
+   * @param {string} tool - Tool used
+   * @param {Object} details - Action details (position, size, etc.)
+   * @param {string} author - Author of the action
+   * @returns {string} Human-readable action description
+   */
+  const generateActionDescription = useCallback((action, tool, details, author = 'You') => {
+    const timestamp = new Date().toLocaleTimeString();
+    let description = '';
+    
+    switch (action) {
+      case 'draw':
+        if (tool === 'pen' || tool === 'brush' || tool === 'marker') {
+          description = `${author} drew with ${tool}`;
+        } else if (tool === 'eraser') {
+          description = `${author} erased content`;
+        } else {
+          description = `${author} drew with ${tool}`;
+        }
+        break;
+        
+      case 'add_shape':
+        if (tool === 'rectangle') {
+          const { width, height, x, y } = details;
+          const position = getPositionDescription(x, y);
+          description = `${author} drew rectangle ${width}x${height} at ${position}`;
+        } else if (tool === 'circle') {
+          const { radius, x, y } = details;
+          const position = getPositionDescription(x, y);
+          description = `${author} drew circle radius ${radius} at ${position}`;
+        } else if (tool === 'line') {
+          const { x1, y1, x2, y2 } = details;
+          const startPos = getPositionDescription(x1, y1);
+          const endPos = getPositionDescription(x2, y2);
+          description = `${author} drew line from ${startPos} to ${endPos}`;
+        } else if (tool === 'text') {
+          const { text, x, y } = details;
+          const position = getPositionDescription(x, y);
+          description = `${author} added text "${text}" at ${position}`;
+        }
+        break;
+        
+      case 'clear':
+        description = `${author} cleared canvas`;
+        break;
+        
+      case 'undo':
+        description = `${author} undid last action`;
+        break;
+        
+      case 'redo':
+        description = `${author} redid action`;
+        break;
+        
+      case 'tool_change':
+        description = `${author} switched to ${tool} tool`;
+        break;
+        
+      case 'color_change':
+        description = `${author} changed color to ${details.color}`;
+        break;
+        
+      default:
+        description = `${author} performed ${action}`;
+    }
+    
+    return `${timestamp}: ${description}`;
+  }, []);
+
+  /**
+   * Get position description for canvas coordinates
+   * 
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @returns {string} Position description
+   */
+  const getPositionDescription = useCallback((x, y) => {
+    const canvasWidth = 800; // Default canvas width
+    const canvasHeight = 600; // Default canvas height
+    
+    const horizontal = x < canvasWidth * 0.33 ? 'left' : 
+                      x < canvasWidth * 0.66 ? 'center' : 'right';
+    const vertical = y < canvasHeight * 0.33 ? 'top' : 
+                     y < canvasHeight * 0.66 ? 'middle' : 'bottom';
+    
+    return `${horizontal}-${vertical}`;
+  }, []);
+
+  /**
+   * Log canvas action for Blind Mode
+   * 
+   * @param {string} action - Action type
+   * @param {string} tool - Tool used
+   * @param {Object} details - Action details
+   * @param {string} author - Author of the action
+   */
+  const logCanvasAction = useCallback((action, tool, details = {}, author = 'You') => {
+    if (!blindModeEnabled) return;
+    
+    const description = generateActionDescription(action, tool, details, author);
+    const actionEntry = {
+      id: `action-${Date.now()}-${Math.random()}`,
+      timestamp: Date.now(),
+      action,
+      tool,
+      details,
+      author,
+      description
+    };
+    
+    // Add to action log
+    setActionLog(prev => [...prev.slice(-49), actionEntry]); // Keep last 50 actions
+    setLastCanvasAction(actionEntry);
+    
+    // Announce the action
+    announceToScreenReader(description);
+    
+    // Update description log for existing system
+    setDescriptionLog(prev => [...prev, {
+      timestamp: Date.now(),
+      action: action,
+      description: description,
+      details: details
+    }]);
+  }, [blindModeEnabled, generateActionDescription, announceToScreenReader]);
+
+  /**
    * Process voice commands
    */
   const processVoiceCommand = useCallback((command) => {
@@ -113,49 +249,90 @@ const CanvasDrawing = ({
     // Tool selection commands
     if (commandLower.includes('pen') || commandLower.includes('pencil')) {
       setCurrentTool('pen');
-      announce('Switched to pen tool', 'polite');
+      logCanvasAction('tool_change', 'pen');
     } else if (commandLower.includes('brush')) {
       setCurrentTool('brush');
-      announce('Switched to brush tool', 'polite');
+      logCanvasAction('tool_change', 'brush');
     } else if (commandLower.includes('marker')) {
       setCurrentTool('marker');
-      announce('Switched to marker tool', 'polite');
+      logCanvasAction('tool_change', 'marker');
     } else if (commandLower.includes('eraser')) {
       setCurrentTool('eraser');
-      announce('Switched to eraser tool', 'polite');
+      logCanvasAction('tool_change', 'eraser');
     } else if (commandLower.includes('rectangle') || commandLower.includes('rect')) {
       setCurrentTool('rectangle');
-      announce('Switched to rectangle tool', 'polite');
+      logCanvasAction('tool_change', 'rectangle');
     } else if (commandLower.includes('circle')) {
       setCurrentTool('circle');
-      announce('Switched to circle tool', 'polite');
+      logCanvasAction('tool_change', 'circle');
     } else if (commandLower.includes('line')) {
       setCurrentTool('line');
-      announce('Switched to line tool', 'polite');
+      logCanvasAction('tool_change', 'line');
     } else if (commandLower.includes('text')) {
       setCurrentTool('text');
-      announce('Switched to text tool', 'polite');
+      logCanvasAction('tool_change', 'text');
     } else if (commandLower.includes('select')) {
       setCurrentTool('select');
-      announce('Switched to select tool', 'polite');
+      logCanvasAction('tool_change', 'select');
     }
     
     // Color commands
     else if (commandLower.includes('red')) {
       setCurrentColor('#FF0000');
-      announce('Changed color to red', 'polite');
+      logCanvasAction('color_change', currentTool, { color: 'red' });
     } else if (commandLower.includes('blue')) {
       setCurrentColor('#0000FF');
-      announce('Changed color to blue', 'polite');
+      logCanvasAction('color_change', currentTool, { color: 'blue' });
     } else if (commandLower.includes('green')) {
       setCurrentColor('#00FF00');
-      announce('Changed color to green', 'polite');
+      logCanvasAction('color_change', currentTool, { color: 'green' });
     } else if (commandLower.includes('black')) {
       setCurrentColor('#000000');
-      announce('Changed color to black', 'polite');
+      logCanvasAction('color_change', currentTool, { color: 'black' });
     } else if (commandLower.includes('white')) {
       setCurrentColor('#FFFFFF');
-      announce('Changed color to white', 'polite');
+      logCanvasAction('color_change', currentTool, { color: 'white' });
+    }
+    
+    // Drawing action commands
+    else if (commandLower.includes('draw circle')) {
+      const match = commandLower.match(/draw circle (\d+)x(\d+) (\w+)/);
+      if (match) {
+        const [, width, height, position] = match;
+        const x = position === 'center' ? 400 : position === 'left' ? 200 : 600;
+        const y = position === 'center' ? 300 : position === 'top' ? 150 : 450;
+        logCanvasAction('add_shape', 'circle', { 
+          radius: parseInt(width), 
+          x, 
+          y 
+        });
+        announce(`Drawing circle ${width}x${height} at ${position}`, 'polite');
+      }
+    } else if (commandLower.includes('draw rectangle')) {
+      const match = commandLower.match(/draw rectangle (\d+)x(\d+) (\w+)/);
+      if (match) {
+        const [, width, height, position] = match;
+        const x = position === 'center' ? 400 : position === 'left' ? 200 : 600;
+        const y = position === 'center' ? 300 : position === 'top' ? 150 : 450;
+        logCanvasAction('add_shape', 'rectangle', { 
+          width: parseInt(width), 
+          height: parseInt(height), 
+          x, 
+          y 
+        });
+        announce(`Drawing rectangle ${width}x${height} at ${position}`, 'polite');
+      }
+    } else if (commandLower.includes('add text')) {
+      const match = commandLower.match(/add text: (.+)/);
+      if (match) {
+        const [, text] = match;
+        logCanvasAction('add_shape', 'text', { 
+          text, 
+          x: 400, 
+          y: 300 
+        });
+        announce(`Adding text: ${text}`, 'polite');
+      }
     }
     
     // Action commands
@@ -168,7 +345,7 @@ const CanvasDrawing = ({
     } else if (commandLower.includes('save')) {
       handleSaveCanvas();
     }
-  }, [screenReader, announce, setCurrentTool, setCurrentColor]);
+  }, [logCanvasAction, currentTool, handleUndo, handleRedo, handleClearCanvas, handleSaveCanvas, announce]);
 
   /**
    * Generate textual description of canvas content
@@ -443,6 +620,13 @@ const CanvasDrawing = ({
     setCanUndo(true);
     setCanRedo(false);
 
+    // Log drawing action for Blind Mode
+    logCanvasAction('draw', currentTool, {
+      color: currentColor,
+      strokeWidth: currentStrokeWidth,
+      pathLength: currentPathRef.current.length
+    });
+
     // Generate description
     generateCanvasDescription();
 
@@ -463,7 +647,7 @@ const CanvasDrawing = ({
     if (onRoomUpdate) {
       onRoomUpdate({ canvas: canvasState });
     }
-  }, [canvas, connected, sendEvent, roomId, currentTool, currentColor, currentStrokeWidth, onRoomUpdate, generateCanvasDescription, historyIndex]);
+  }, [canvas, connected, sendEvent, roomId, currentTool, currentColor, currentStrokeWidth, onRoomUpdate, generateCanvasDescription, historyIndex, logCanvasAction]);
 
   /**
    * Handle tool change
@@ -483,10 +667,13 @@ const CanvasDrawing = ({
       }
     }
 
+    // Log tool change for Blind Mode
+    logCanvasAction('tool_change', tool);
+
     if (screenReader) {
       announce(`Switched to ${tools[tool]?.name || tool} tool`, 'polite');
     }
-  }, [canvas, currentStrokeWidth, currentColor, currentOpacity, canvasSettings.backgroundColor, tools, screenReader, announce]);
+  }, [canvas, currentStrokeWidth, currentColor, currentOpacity, canvasSettings.backgroundColor, tools, screenReader, announce, logCanvasAction]);
 
   /**
    * Handle color change
@@ -498,10 +685,13 @@ const CanvasDrawing = ({
       canvas.freeDrawingBrush.color = color;
     }
 
+    // Log color change for Blind Mode
+    logCanvasAction('color_change', currentTool, { color });
+
     if (screenReader) {
       announce(`Changed color to ${color}`, 'polite');
     }
-  }, [canvas, screenReader, announce]);
+  }, [canvas, screenReader, announce, logCanvasAction, currentTool]);
 
   /**
    * Handle stroke width change
@@ -533,12 +723,15 @@ const CanvasDrawing = ({
       });
       setCanUndo(newIndex > 0);
       setCanRedo(true);
+      
+      // Log undo action for Blind Mode
+      logCanvasAction('undo', currentTool);
     }
 
     if (screenReader) {
       announce('Undid last action', 'polite');
     }
-  }, [canvas, canUndo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce]);
+  }, [canvas, canUndo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
 
   /**
    * Handle redo
@@ -555,12 +748,15 @@ const CanvasDrawing = ({
       });
       setCanRedo(newIndex < drawingHistory.length - 1);
       setCanUndo(true);
+      
+      // Log redo action for Blind Mode
+      logCanvasAction('redo', currentTool);
     }
 
     if (screenReader) {
       announce('Redid last action', 'polite');
     }
-  }, [canvas, canRedo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce]);
+  }, [canvas, canRedo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
 
   /**
    * Handle clear canvas
@@ -581,10 +777,13 @@ const CanvasDrawing = ({
       details: []
     }]);
 
+    // Log clear action for Blind Mode
+    logCanvasAction('clear', currentTool);
+
     if (screenReader) {
       announce('Canvas cleared', 'polite');
     }
-  }, [canvas, screenReader, announce]);
+  }, [canvas, screenReader, announce, logCanvasAction, currentTool]);
 
   /**
    * Handle save canvas
@@ -628,6 +827,18 @@ const CanvasDrawing = ({
           event.preventDefault();
           handleClearCanvas();
           break;
+        case 'c':
+        case 'C':
+          // Ctrl+Shift+C: Read last canvas action
+          if (event.shiftKey) {
+            event.preventDefault();
+            if (blindModeEnabled && lastCanvasAction) {
+              announceToScreenReader(`Last canvas action: ${lastCanvasAction.description}`);
+            } else if (blindModeEnabled) {
+              announceToScreenReader('No recent canvas actions to announce');
+            }
+          }
+          break;
         default:
           // No shortcut for this key
           break;
@@ -652,7 +863,9 @@ const CanvasDrawing = ({
         handleToolChange('rectangle');
         break;
       case 'c':
-        handleToolChange('circle');
+        if (!event.ctrlKey || !event.shiftKey) {
+          handleToolChange('circle');
+        }
         break;
       case 'l':
         handleToolChange('line');
@@ -667,7 +880,7 @@ const CanvasDrawing = ({
         // No tool shortcut for this key
         break;
     }
-  }, [keyboardNavigation, handleRedo, handleUndo, handleSaveCanvas, handleClearCanvas, handleToolChange]);
+  }, [keyboardNavigation, handleRedo, handleUndo, handleSaveCanvas, handleClearCanvas, handleToolChange, blindModeEnabled, lastCanvasAction, announceToScreenReader]);
 
   /**
    * Render tool palette
@@ -793,6 +1006,53 @@ const CanvasDrawing = ({
   };
 
   /**
+   * Render action log for Blind Mode
+   */
+  const renderActionLog = () => {
+    if (!blindModeEnabled) return null;
+
+    return (
+      <div className="p-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium">Canvas Action Log</h3>
+          <button
+            onClick={() => setShowActionLog(!showActionLog)}
+            className="btn btn-xs btn-outline"
+            aria-label={showActionLog ? 'Hide action log' : 'Show action log'}
+            title={showActionLog ? 'Hide action log' : 'Show action log'}
+          >
+            {showActionLog ? 'Hide' : 'Show'} Log
+          </button>
+        </div>
+        
+        {showActionLog && (
+          <div 
+            className="h-32 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded p-2 bg-white dark:bg-gray-800"
+            role="log"
+            aria-label="Canvas action log"
+            aria-live="polite"
+            aria-atomic="false"
+          >
+            {actionLog.length > 0 ? (
+              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                {actionLog.map((action) => (
+                  <div key={action.id} className="py-1 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                    {action.description}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500 dark:text-gray-500 italic">
+                No actions recorded yet
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /**
    * Render canvas footer
    */
   const renderCanvasFooter = () => {
@@ -890,6 +1150,9 @@ const CanvasDrawing = ({
       {/* Drawing Descriptions */}
       {renderDrawingDescriptions()}
 
+      {/* Action Log for Blind Mode */}
+      {renderActionLog()}
+
       {/* Canvas Footer */}
       {renderCanvasFooter()}
 
@@ -910,6 +1173,9 @@ const CanvasDrawing = ({
           <li>Ctrl+Shift+Z: Redo</li>
           <li>Ctrl+S: Save</li>
           <li>Ctrl+A: Clear</li>
+          {blindModeEnabled && (
+            <li>Ctrl+Shift+C: Read last canvas action</li>
+          )}
         </ul>
       </div>
 
@@ -928,6 +1194,9 @@ const CanvasDrawing = ({
             <li>Say "text" to switch to text tool</li>
             <li>Say "select" to switch to select tool</li>
             <li>Say "red", "blue", "green", "black", "white" to change colors</li>
+            <li>Say "draw circle 100x100 center" to draw a circle</li>
+            <li>Say "draw rectangle 200x100 top-left" to draw a rectangle</li>
+            <li>Say "add text: Hello World" to add text</li>
             <li>Say "undo" to undo last action</li>
             <li>Say "redo" to redo last action</li>
             <li>Say "clear" to clear canvas</li>

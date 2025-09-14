@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
+import { useBlindMode } from '../../contexts/BlindModeContext';
 
 /**
  * Chat Panel Component
@@ -32,6 +33,7 @@ const ChatPanel = ({
   const { announce, screenReader } = useAccessibility();
   const { connected, sendEvent } = useSocket();
   const { user } = useUser();
+  const { enabled: blindModeEnabled, announceToScreenReader } = useBlindMode();
 
   // Chat state
   const [messages, setMessages] = useState([]);
@@ -62,6 +64,11 @@ const ChatPanel = ({
   const [showActivityFeed, setShowActivityFeed] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredMessages, setFilteredMessages] = useState([]);
+  
+  // Blind Mode state
+  const [lastMessage, setLastMessage] = useState(null);
+  const [messageHistory, setMessageHistory] = useState([]);
+  const [currentAnnouncement, setCurrentAnnouncement] = useState(null);
 
   // Refs
   const messagesEndRef = useRef(null);
@@ -69,12 +76,64 @@ const ChatPanel = ({
   const chatContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const audioContextRef = useRef(null);
+  const announcementTimeoutRef = useRef(null);
 
   // Constants
   const TYPING_TIMEOUT = 3000; // 3 seconds
   const NOTIFICATION_DURATION = 5000; // 5 seconds
   const MAX_MESSAGES = 1000; // Maximum messages to keep in memory
   const MAX_ACTIVITIES = 500; // Maximum activities to keep in memory
+
+  /**
+   * Announce message for Blind Mode
+   * 
+   * @param {Object} messageData - Message data
+   * @param {string} type - Announcement type (message, join, leave, typing)
+   */
+  const announceForBlindMode = useCallback((messageData, type = 'message') => {
+    if (!blindModeEnabled) return;
+    
+    let announcement = '';
+    
+    switch (type) {
+      case 'message':
+        announcement = `Message from ${messageData.username}: ${messageData.text}`;
+        break;
+      case 'join':
+        announcement = `${messageData.username} joined the room`;
+        break;
+      case 'leave':
+        announcement = `${messageData.username} left the room`;
+        break;
+      case 'typing':
+        announcement = `${messageData.username} is typing`;
+        break;
+      default:
+        announcement = `${messageData.username}: ${messageData.text || messageData.description}`;
+    }
+    
+    // Clear any existing announcement
+    if (announcementTimeoutRef.current) {
+      clearTimeout(announcementTimeoutRef.current);
+    }
+    
+    // Set new announcement
+    setCurrentAnnouncement(announcement);
+    
+    // Announce the message
+    announceToScreenReader(announcement);
+    
+    // Update message history
+    if (type === 'message') {
+      setMessageHistory(prev => [...prev.slice(-9), messageData]);
+      setLastMessage(messageData);
+    }
+    
+    // Clear announcement after a delay
+    announcementTimeoutRef.current = setTimeout(() => {
+      setCurrentAnnouncement(null);
+    }, 3000);
+  }, [blindModeEnabled, announceToScreenReader]);
 
   /**
    * Initialize chat from room data
@@ -84,6 +143,28 @@ const ChatPanel = ({
       setMessages(roomData.chat);
     }
   }, [roomData?.chat]);
+
+  /**
+   * Add keyboard event listener for shortcuts
+   */
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  /**
+   * Cleanup timeouts on unmount
+   */
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (announcementTimeoutRef.current) {
+        clearTimeout(announcementTimeoutRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Initialize audio context for notifications
@@ -161,11 +242,14 @@ const ChatPanel = ({
       });
     }
 
-    // Announce to screen readers
-    if (screenReader) {
+    // Announce for Blind Mode
+    announceForBlindMode(messageData, 'message');
+
+    // Announce to screen readers (fallback)
+    if (screenReader && !blindModeEnabled) {
       announce(`New message from ${messageData.username}: ${messageData.text}`, 'polite');
     }
-  }, [isFocused, user, screenReader, announce, addActivity, showNotification]);
+  }, [isFocused, user, screenReader, announce, addActivity, showNotification, announceForBlindMode, blindModeEnabled]);
 
   /**
    * Handle user join
@@ -192,8 +276,11 @@ const ChatPanel = ({
       });
     }
 
-    // Announce to screen readers
-    if (screenReader) {
+    // Announce for Blind Mode
+    announceForBlindMode(userData, 'join');
+
+    // Announce to screen readers (fallback)
+    if (screenReader && !blindModeEnabled) {
       announce(`${userData.username} joined the room`, 'polite');
     }
 
@@ -201,7 +288,7 @@ const ChatPanel = ({
     if (notificationSettings.soundEnabled) {
       playNotificationSound('join');
     }
-  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification]);
+  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification, announceForBlindMode, blindModeEnabled]);
 
   /**
    * Handle user leave
@@ -228,8 +315,11 @@ const ChatPanel = ({
       });
     }
 
-    // Announce to screen readers
-    if (screenReader) {
+    // Announce for Blind Mode
+    announceForBlindMode(userData, 'leave');
+
+    // Announce to screen readers (fallback)
+    if (screenReader && !blindModeEnabled) {
       announce(`${userData.username} left the room`, 'polite');
     }
 
@@ -237,7 +327,7 @@ const ChatPanel = ({
     if (notificationSettings.soundEnabled) {
       playNotificationSound('leave');
     }
-  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification]);
+  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification, announceForBlindMode, blindModeEnabled]);
 
   /**
    * Handle typing start
@@ -261,6 +351,9 @@ const ChatPanel = ({
       username: userData.username
     });
 
+    // Announce for Blind Mode
+    announceForBlindMode(userData, 'typing');
+
     // Show notification if enabled
     if (notificationSettings.typingEnabled && userData.userId !== user?.userId) {
       showNotification({
@@ -270,7 +363,7 @@ const ChatPanel = ({
         duration: 2000
       });
     }
-  }, [notificationSettings, user]);
+  }, [notificationSettings, user, announceForBlindMode]);
 
   /**
    * Handle typing stop
@@ -464,6 +557,21 @@ const ChatPanel = ({
       sendMessage();
     }
   }, [sendMessage]);
+
+  /**
+   * Handle keyboard shortcuts
+   */
+  const handleKeyDown = useCallback((e) => {
+    // Ctrl+Shift+M: Read last message
+    if (e.ctrlKey && e.shiftKey && e.key === 'm') {
+      e.preventDefault();
+      if (blindModeEnabled && lastMessage) {
+        announceToScreenReader(`Last message: ${lastMessage.username}: ${lastMessage.text}`);
+      } else if (blindModeEnabled) {
+        announceToScreenReader('No recent messages to announce');
+      }
+    }
+  }, [blindModeEnabled, lastMessage, announceToScreenReader]);
 
   /**
    * Handle focus
@@ -719,6 +827,9 @@ const ChatPanel = ({
         </div>
         <div id="message-help" className="sr-only">
           Press Enter to send message, Shift+Enter for new line
+          {blindModeEnabled && (
+            <span>Press Ctrl+Shift+M to read last message</span>
+          )}
         </div>
       </div>
 
@@ -730,6 +841,24 @@ const ChatPanel = ({
         {unreadCount > 0 && `${unreadCount} unread messages`}
         {Object.keys(typingUsers).length > 0 && `${Object.keys(typingUsers).length} users typing`}
       </div>
+
+      {/* Blind Mode Announcements */}
+      {blindModeEnabled && (
+        <div 
+          className="sr-only" 
+          aria-live="polite" 
+          aria-atomic="true"
+          id="chat-announcements"
+          role="status"
+          aria-label="Chat announcements"
+        >
+          {currentAnnouncement && (
+            <span key={Date.now()}>
+              {currentAnnouncement}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useBlindMode } from '../../contexts/BlindModeContext';
 
 /**
  * Accessibility Controls Component
@@ -42,6 +43,13 @@ const AccessibilityControls = ({
     theme, 
     setTheme 
   } = useTheme();
+
+  const { 
+    enabled: blindModeEnabled, 
+    toggleBlindMode, 
+    setBlindMode,
+    announceToScreenReader 
+  } = useBlindMode();
 
   // Local state
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
@@ -110,7 +118,18 @@ const AccessibilityControls = ({
       { key: 'Ctrl+Minus', description: 'Decrease font size' },
       { key: 'Ctrl+0', description: 'Reset font size' },
       { key: 'Ctrl+Shift+S', description: 'Toggle screen reader mode' },
-      { key: 'Ctrl+Shift+K', description: 'Toggle keyboard navigation' }
+      { key: 'Ctrl+Shift+K', description: 'Toggle keyboard navigation' },
+      { key: 'Ctrl+Shift+B', description: 'Toggle Blind Mode' }
+    ],
+    blindMode: [
+      { key: 'Ctrl+1', description: 'Switch to Code tab' },
+      { key: 'Ctrl+2', description: 'Switch to Notes tab' },
+      { key: 'Ctrl+3', description: 'Switch to Canvas Log' },
+      { key: 'Ctrl+4', description: 'Switch to Chat tab' },
+      { key: 'Ctrl+Shift+D', description: 'Read last code change' },
+      { key: 'Ctrl+Shift+N', description: 'Read last note update' },
+      { key: 'Ctrl+Shift+C', description: 'Read last canvas action' },
+      { key: 'Ctrl+Shift+M', description: 'Read last message' }
     ]
   };
 
@@ -199,6 +218,36 @@ const AccessibilityControls = ({
   }, [keyboardNavigation, setKeyboardNavigation, announce]);
 
   /**
+   * Handle Blind Mode toggle
+   */
+  const handleBlindModeToggle = useCallback(() => {
+    toggleBlindMode();
+    
+    // Announce change
+    const message = !blindModeEnabled ? 'Blind Mode enabled' : 'Blind Mode disabled';
+    announce(message, 'polite');
+    
+    // Announce to screen reader
+    announceToScreenReader(message);
+    
+    // Add to announcements
+    setAnnouncements(prev => [...prev, {
+      id: Date.now(),
+      message,
+      timestamp: Date.now()
+    }]);
+
+    // If enabling Blind Mode, provide instructions
+    if (!blindModeEnabled) {
+      setTimeout(() => {
+        const instructions = 'Use Ctrl+1 Code, Ctrl+2 Notes, Ctrl+3 Canvas Log, Ctrl+4 Chat.';
+        announceToScreenReader(instructions);
+        announce(instructions, 'polite');
+      }, 1000);
+    }
+  }, [blindModeEnabled, toggleBlindMode, announce, announceToScreenReader]);
+
+  /**
    * Handle keyboard shortcuts
    */
   const handleKeyDown = useCallback((event) => {
@@ -244,6 +293,12 @@ const AccessibilityControls = ({
             handleKeyboardNavigationToggle();
           }
           break;
+        case 'b':
+          if (event.shiftKey) {
+            event.preventDefault();
+            handleBlindModeToggle();
+          }
+          break;
       }
     }
 
@@ -264,6 +319,7 @@ const AccessibilityControls = ({
     handleFontSizeChange, 
     handleScreenReaderToggle, 
     handleKeyboardNavigationToggle,
+    handleBlindModeToggle,
     fontSize,
     fontSizes,
     showAccessibilityHelp,
@@ -394,6 +450,22 @@ const AccessibilityControls = ({
             onFocus={() => handleFocus(event.target)}
           >
             {keyboardNavigation ? '⌨️' : '🖱️'}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label htmlFor="blind-mode" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Blind Mode
+          </label>
+          <button
+            id="blind-mode"
+            onClick={handleBlindModeToggle}
+            className={`btn btn-sm ${blindModeEnabled ? 'btn-primary' : 'btn-outline'}`}
+            aria-label="Toggle Blind Mode"
+            title="Toggle Blind Mode (Ctrl+Shift+B)"
+            onFocus={() => handleFocus(event.target)}
+          >
+            {blindModeEnabled ? '👁️‍🗨️' : '👁️'}
           </button>
         </div>
       </div>
@@ -547,6 +619,21 @@ const AccessibilityControls = ({
 
               <div>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">
+                  Blind Mode
+                </h3>
+                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                  <li>• Provides enhanced announcements for completely blind users</li>
+                  <li>• Use Ctrl+1 for Code, Ctrl+2 for Notes, Ctrl+3 for Canvas Log, Ctrl+4 for Chat</li>
+                  <li>• Use Ctrl+Shift+D to read last code change</li>
+                  <li>• Use Ctrl+Shift+N to read last note update</li>
+                  <li>• Use Ctrl+Shift+C to read last canvas action</li>
+                  <li>• Use Ctrl+Shift+M to read last message</li>
+                  <li>• Toggle with Ctrl+Shift+B or the Blind Mode button</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">
                   Testing Recommendations
                 </h3>
                 <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
@@ -555,6 +642,7 @@ const AccessibilityControls = ({
                   <li>• Test with high contrast mode enabled</li>
                   <li>• Test with different font sizes</li>
                   <li>• Test with screen reader mode enabled</li>
+                  <li>• Test with Blind Mode enabled for enhanced announcements</li>
                 </ul>
               </div>
             </div>
@@ -618,6 +706,7 @@ const AccessibilityControls = ({
           <div>High Contrast: {highContrast ? 'On' : 'Off'}</div>
           <div>Screen Reader: {screenReader ? 'On' : 'Off'}</div>
           <div>Keyboard Nav: {keyboardNavigation ? 'On' : 'Off'}</div>
+          <div>Blind Mode: {blindModeEnabled ? 'On' : 'Off'}</div>
         </div>
       </div>
 

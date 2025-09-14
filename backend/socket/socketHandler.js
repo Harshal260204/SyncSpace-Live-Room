@@ -144,6 +144,14 @@ const socketHandler = (io) => {
           settings: room.settings,
         });
 
+        // Enhanced metadata for Blind Mode
+        const joinMetadata = {
+          author: username,
+          timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+          actionType: 'join',
+          userId: userId,
+        };
+
         // Broadcast user joined to other participants
         socket.to(roomId).emit('userJoined', {
           userId,
@@ -151,6 +159,7 @@ const socketHandler = (io) => {
           accessibility: preferences.accessibility || {},
           color: preferences.appearance?.cursorColor || '#3B82F6',
           timestamp: new Date(),
+          metadata: joinMetadata, // Include metadata for Blind Mode
         });
 
         // Send recent chat messages
@@ -171,6 +180,7 @@ const socketHandler = (io) => {
     /**
      * Handle code changes in collaborative editor
      * Broadcasts changes to other participants in the room
+     * Enhanced with metadata for Blind Mode support
      */
     socket.on('code-change', async (data) => {
       try {
@@ -180,7 +190,7 @@ const socketHandler = (io) => {
           return;
         }
 
-        const { content, language, cursorPosition } = data;
+        const { content, language, cursorPosition, actionType = 'edit', linesChanged = 0, file = 'main' } = data;
         
         // Update room's code content
         const room = await Room.findRoomById(connection.roomId);
@@ -192,6 +202,16 @@ const socketHandler = (io) => {
             username: connection.username,
           });
 
+          // Enhanced metadata for Blind Mode
+          const metadata = {
+            author: connection.username,
+            timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+            actionType: actionType, // insert, delete, edit, format, etc.
+            linesChanged: linesChanged,
+            file: file,
+            userId: connection.userId,
+          };
+
           // Broadcast to other participants in the room
           socket.to(connection.roomId).emit('code-changed', {
             content,
@@ -200,6 +220,7 @@ const socketHandler = (io) => {
             username: connection.username,
             cursorPosition,
             timestamp: new Date(),
+            metadata, // Include metadata for Blind Mode
           });
         }
 
@@ -212,6 +233,7 @@ const socketHandler = (io) => {
     /**
      * Handle notes changes in collaborative notes editor
      * Broadcasts changes to other participants in the room
+     * Enhanced with metadata for Blind Mode support
      */
     socket.on('note-change', async (data) => {
       try {
@@ -221,7 +243,7 @@ const socketHandler = (io) => {
           return;
         }
 
-        const { content } = data;
+        const { content, actionType = 'edit', wordsChanged = 0 } = data;
         
         // Update room's notes content
         const room = await Room.findRoomById(connection.roomId);
@@ -232,12 +254,22 @@ const socketHandler = (io) => {
             username: connection.username,
           });
 
+          // Enhanced metadata for Blind Mode
+          const metadata = {
+            author: connection.username,
+            timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+            actionType: actionType, // insert, delete, edit, format, etc.
+            wordsChanged: wordsChanged,
+            userId: connection.userId,
+          };
+
           // Broadcast to other participants in the room
           socket.to(connection.roomId).emit('note-changed', {
             content,
             userId: connection.userId,
             username: connection.username,
             timestamp: new Date(),
+            metadata, // Include metadata for Blind Mode
           });
         }
 
@@ -250,6 +282,7 @@ const socketHandler = (io) => {
     /**
      * Handle canvas drawing events
      * Broadcasts drawing data to other participants in the room
+     * Enhanced with metadata for Blind Mode support
      */
     socket.on('draw-event', async (data) => {
       try {
@@ -259,7 +292,7 @@ const socketHandler = (io) => {
           return;
         }
 
-        const { drawingData, action } = data;
+        const { drawingData, action, actionType = 'draw', shapeType = 'unknown' } = data;
         
         // Update room's canvas drawing
         const room = await Room.findRoomById(connection.roomId);
@@ -270,6 +303,15 @@ const socketHandler = (io) => {
             username: connection.username,
           });
 
+          // Enhanced metadata for Blind Mode
+          const metadata = {
+            author: connection.username,
+            timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+            actionType: actionType, // draw, erase, clear, move, resize, etc.
+            shapeType: shapeType, // line, circle, rectangle, text, etc.
+            userId: connection.userId,
+          };
+
           // Broadcast to other participants in the room
           socket.to(connection.roomId).emit('drawing-updated', {
             drawingData,
@@ -277,6 +319,7 @@ const socketHandler = (io) => {
             userId: connection.userId,
             username: connection.username,
             timestamp: new Date(),
+            metadata, // Include metadata for Blind Mode
           });
         }
 
@@ -289,6 +332,7 @@ const socketHandler = (io) => {
     /**
      * Handle chat messages
      * Stores message in database and broadcasts to room participants
+     * Enhanced with metadata for Blind Mode support
      */
     socket.on('chat-message', async (data) => {
       try {
@@ -298,7 +342,7 @@ const socketHandler = (io) => {
           return;
         }
 
-        const { message, messageType = 'text' } = data;
+        const { message, messageType = 'text', actionType = 'send' } = data;
         
         if (!message || message.trim().length === 0) {
           socket.emit('error', { message: 'Message cannot be empty', code: 'EMPTY_MESSAGE' });
@@ -328,11 +372,21 @@ const socketHandler = (io) => {
             await user.incrementMessageCount();
           }
 
+          // Enhanced metadata for Blind Mode
+          const metadata = {
+            author: connection.username,
+            timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+            actionType: actionType, // send, edit, delete, react, etc.
+            messageLength: message.trim().length,
+            userId: connection.userId,
+          };
+
           // Broadcast to all participants in the room (including sender)
           io.to(connection.roomId).emit('chat-message', {
             ...messageData,
             timestamp: new Date(),
             id: uuidv4(),
+            metadata, // Include metadata for Blind Mode
           });
         }
 
@@ -345,6 +399,7 @@ const socketHandler = (io) => {
     /**
      * Handle presence updates (cursor position, activity status)
      * Broadcasts presence data to other participants
+     * Enhanced with metadata for Blind Mode support
      */
     socket.on('presence-update', async (data) => {
       try {
@@ -353,7 +408,7 @@ const socketHandler = (io) => {
           return; // Silently ignore if not in a room
         }
 
-        const { cursorPosition, isActive = true } = data;
+        const { cursorPosition, isActive = true, actionType = 'move' } = data;
         
         // Update room participant data
         const room = await Room.findRoomById(connection.roomId);
@@ -366,6 +421,14 @@ const socketHandler = (io) => {
             await room.save();
           }
 
+          // Enhanced metadata for Blind Mode
+          const metadata = {
+            author: connection.username,
+            timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+            actionType: actionType, // move, join, leave, focus, blur, etc.
+            userId: connection.userId,
+          };
+
           // Broadcast to other participants in the room
           socket.to(connection.roomId).emit('presence-updated', {
             userId: connection.userId,
@@ -373,6 +436,7 @@ const socketHandler = (io) => {
             cursorPosition,
             isActive,
             timestamp: new Date(),
+            metadata, // Include metadata for Blind Mode
           });
         }
 
@@ -399,11 +463,20 @@ const socketHandler = (io) => {
         if (room) {
           await room.removeParticipant(userId);
           
+          // Enhanced metadata for Blind Mode
+          const leaveMetadata = {
+            author: username,
+            timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+            actionType: 'leave',
+            userId: userId,
+          };
+
           // Broadcast user left to other participants
           socket.to(roomId).emit('userLeft', {
             userId,
             username,
             timestamp: new Date(),
+            metadata: leaveMetadata, // Include metadata for Blind Mode
           });
         }
 
@@ -446,11 +519,20 @@ const socketHandler = (io) => {
           if (room) {
             await room.removeParticipant(userId);
             
+            // Enhanced metadata for Blind Mode
+            const disconnectMetadata = {
+              author: username,
+              timestamp: Math.floor(Date.now() / 1000), // Unix timestamp
+              actionType: 'disconnect',
+              userId: userId,
+            };
+
             // Broadcast user disconnected to other participants
             socket.to(roomId).emit('userDisconnected', {
               userId,
               username,
               timestamp: new Date(),
+              metadata: disconnectMetadata, // Include metadata for Blind Mode
             });
           }
 

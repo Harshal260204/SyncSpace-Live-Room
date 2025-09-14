@@ -386,3 +386,232 @@ body {
   transform: translateY(-100%);
   margin-top: -4px;
 }
+
+/* ========================================
+   BLIND MODE STYLES
+   ======================================== */
+
+/* Blind Mode: Enhanced accessibility for completely blind users */
+.blind-mode {
+  /* Ensure high contrast and clear visual indicators */
+  --text-primary: #000000;
+  --text-secondary: #333333;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --border-primary: #000000;
+  --accent-primary: #0066cc;
+  --focus-ring: #0066cc;
+}
+
+.blind-mode.dark {
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --bg-primary: #000000;
+  --bg-secondary: #1a1a1a;
+  --border-primary: #ffffff;
+  --accent-primary: #66b3ff;
+  --focus-ring: #66b3ff;
+}
+
+/* Blind Mode: Enhanced focus indicators */
+.blind-mode *:focus {
+  outline: 3px solid var(--focus-ring) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px var(--focus-ring) !important;
+}
+
+/* Blind Mode: Ensure all interactive elements are clearly visible */
+.blind-mode button,
+.blind-mode input,
+.blind-mode select,
+.blind-mode textarea,
+.blind-mode [role="button"],
+.blind-mode [tabindex] {
+  border: 2px solid var(--border-primary) !important;
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Blind Mode: Enhanced button visibility */
+.blind-mode button {
+  font-weight: bold !important;
+  text-decoration: underline !important;
+  padding: 8px 16px !important;
+  min-height: 44px !important;
+  min-width: 44px !important;
+}
+
+/* Blind Mode: Enhanced form controls */
+.blind-mode input,
+.blind-mode select,
+.blind-mode textarea {
+  border-width: 2px !important;
+  padding: 8px !important;
+  font-size: 16px !important;
+  min-height: 44px !important;
+}
+
+/* Blind Mode: Enhanced links */
+.blind-mode a {
+  text-decoration: underline !important;
+  font-weight: bold !important;
+  color: var(--accent-primary) !important;
+}
+
+.blind-mode a:visited {
+  color: var(--accent-secondary) !important;
+}
+
+/* Blind Mode: Enhanced headings */
+.blind-mode h1,
+.blind-mode h2,
+.blind-mode h3,
+.blind-mode h4,
+.blind-mode h5,
+.blind-mode h6 {
+  font-weight: bold !important;
+  text-decoration: underline !important;
+  margin-bottom: 16px !important;
+}
+
+/* Blind Mode: Screen reader only content should be more accessible */
+.blind-mode .sr-only {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  clip: auto !important;
+  white-space: normal !important;
+  border: 1px solid var(--border-primary) !important;
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  padding: 4px 8px !important;
+  margin: 4px 0 !important;
+  font-size: 14px !important;
+  font-weight: bold !important;
+}
+
+/* Blind Mode: Enhanced live regions for announcements */
+.blind-mode [aria-live] {
+  border: 2px solid var(--accent-primary) !important;
+  background-color: var(--bg-secondary) !important;
+  padding: 8px !important;
+  margin: 8px 0 !important;
+  font-weight: bold !important;
+  color: var(--text-primary) !important;
+}
+
+/* Blind Mode: Enhanced status indicators */
+.blind-mode [role="status"],
+.blind-mode [role="alert"],
+.blind-mode [role="log"] {
+  border: 2px solid var(--accent-primary) !important;
+  background-color: var(--bg-secondary) !important;
+  padding: 12px !important;
+  margin: 8px 0 !important;
+  font-weight: bold !important;
+  color: var(--text-primary) !important;
+}
+
+/* Blind Mode: Enhanced navigation landmarks */
+.blind-mode nav,
+.blind-mode main,
+.blind-mode aside,
+.blind-mode section,
+.blind-mode article {
+  border: 1px solid var(--border-primary) !important;
+  margin: 8px 0 !important;
+  padding: 8px !important;
+}
+
+/* Blind Mode: Enhanced list items */
+.blind-mode li {
+  margin-bottom: 8px !important;
+  padding-left: 16px !important;
+  position: relative !important;
+}
+
+.blind-mode li::before {
+  content: "• " !important;
+  font-weight: bold !important;
+  color: var(--accent-primary) !important;
+  position: absolute !important;
+  left: 0 !important;
+}
+
+/* Blind Mode: Enhanced table structure */
+.blind-mode table {
+  border: 2px solid var(--border-primary) !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+.blind-mode th,
+.blind-mode td {
+  border: 1px solid var(--border-primary) !important;
+  padding: 8px !important;
+  font-weight: bold !important;
+}
+
+.blind-mode th {
+  background-color: var(--bg-secondary) !important;
+  font-weight: bold !important;
+}
+
+/* Blind Mode: Enhanced modal and dialog visibility */
+.blind-mode [role="dialog"],
+.blind-mode [role="alertdialog"] {
+  border: 3px solid var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px var(--focus-ring) !important;
+  background-color: var(--bg-primary) !important;
+}
+
+/* Blind Mode: Enhanced progress indicators */
+.blind-mode [role="progressbar"],
+.blind-mode progress {
+  border: 2px solid var(--border-primary) !important;
+  background-color: var(--bg-secondary) !important;
+  height: 24px !important;
+}
+
+/* Blind Mode: Enhanced toggle switches and checkboxes */
+.blind-mode input[type="checkbox"],
+.blind-mode input[type="radio"] {
+  width: 20px !important;
+  height: 20px !important;
+  border: 2px solid var(--border-primary) !important;
+  margin-right: 8px !important;
+}
+
+/* Blind Mode: Enhanced keyboard navigation indicators */
+.blind-mode .focus-visible-ring:focus-visible {
+  outline: 3px solid var(--focus-ring) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px var(--focus-ring) !important;
+}
+
+/* Blind Mode: Ensure all text is readable */
+.blind-mode * {
+  color: var(--text-primary) !important;
+  background-color: transparent !important;
+}
+
+.blind-mode .bg-transparent {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Blind Mode: Enhanced contrast for all elements */
+.blind-mode .text-gray-500,
+.blind-mode .text-gray-400,
+.blind-mode .text-gray-300 {
+  color: var(--text-secondary) !important;
+}
+
+.blind-mode .text-gray-600,
+.blind-mode .text-gray-700,
+.blind-mode .text-gray-800,
+.blind-mode .text-gray-900 {
+  color: var(--text-primary) !important;
+}

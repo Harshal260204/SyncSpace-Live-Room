@@ -102,11 +102,13 @@ const socketReducer = (state, action) => {
         ...state,
         codeContent: action.payload.content,
         codeLanguage: action.payload.language,
+        codeMetadata: action.payload.metadata || null,
       };
     case 'SET_NOTES_CONTENT':
       return {
         ...state,
-        notesContent: action.payload,
+        notesContent: typeof action.payload === 'string' ? action.payload : action.payload.content,
+        notesMetadata: typeof action.payload === 'object' ? action.payload.metadata : null,
       };
     case 'SET_CANVAS_DATA':
       return {
@@ -129,7 +131,9 @@ const initialState = {
   chatMessages: [],
   codeContent: '',
   codeLanguage: 'javascript',
+  codeMetadata: null,
   notesContent: '',
+  notesMetadata: null,
   canvasData: {},
 };
 
@@ -269,20 +273,26 @@ export const SocketProvider = ({ children }) => {
         // Collaboration event handlers
         socketRef.current.on('code-changed', (data) => {
           console.log('📝 Code changed by:', data.username);
+          console.log('📝 Code change metadata:', data.metadata);
           dispatch({
             type: 'SET_CODE_CONTENT',
             payload: {
               content: data.content,
               language: data.language,
+              metadata: data.metadata, // Include metadata for Blind Mode
             },
           });
         });
 
         socketRef.current.on('note-changed', (data) => {
           console.log('📝 Notes changed by:', data.username);
+          console.log('📝 Notes change metadata:', data.metadata);
           dispatch({
             type: 'SET_NOTES_CONTENT',
-            payload: data.content,
+            payload: {
+              content: data.content,
+              metadata: data.metadata, // Include metadata for Blind Mode
+            },
           });
         });
 
@@ -458,7 +468,9 @@ export const SocketProvider = ({ children }) => {
     chatMessages: state.chatMessages,
     codeContent: state.codeContent,
     codeLanguage: state.codeLanguage,
+    codeMetadata: state.codeMetadata,
     notesContent: state.notesContent,
+    notesMetadata: state.notesMetadata,
     canvasData: state.canvasData,
     
     // Socket actions

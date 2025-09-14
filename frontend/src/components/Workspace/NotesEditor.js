@@ -14,6 +14,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
+import { useBlindMode } from '../../contexts/BlindModeContext';
 
 /**
  * Notes Editor Component
@@ -28,8 +29,9 @@ const NotesEditor = ({
   onRoomUpdate 
 }) => {
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
-  const { connected, sendEvent } = useSocket();
+  const { connected, sendEvent, notesMetadata } = useSocket();
   const { user } = useUser();
+  const { enabled: blindModeEnabled, announceToScreenReader } = useBlindMode();
 
   // Editor state
   const [content, setContent] = useState(roomData?.notes || '');
@@ -57,16 +59,113 @@ const NotesEditor = ({
   // Concurrent editing state
   const [isProcessingChanges, setIsProcessingChanges] = useState(false);
   const [changeQueue, setChangeQueue] = useState([]);
+  
+  // Blind Mode state
+  const [lastNoteUpdate, setLastNoteUpdate] = useState(null);
+  const [noteChangeHistory, setNoteChangeHistory] = useState([]);
+  const [currentAnnouncement, setCurrentAnnouncement] = useState(null);
 
   // Refs
   const editorRef = useRef(null);
   const changeTimeoutRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+  const announcementTimeoutRef = useRef(null);
+  const previousContentRef = useRef(roomData?.notes || '');
 
   // Debounce settings
   const CHANGE_DEBOUNCE_MS = 300;
   const SAVE_DEBOUNCE_MS = 1000;
   const BATCH_UPDATE_MS = 100;
+
+  /**
+   * Analyze note changes for Blind Mode announcements
+   * 
+   * @param {string} oldContent - Previous content
+   * @param {string} newContent - New content
+   * @param {string} author - Author of the change
+   * @param {string} actionType - Type of action (add, edit, delete)
+   * @returns {Object} Change analysis with summary
+   */
+  const analyzeNoteChange = useCallback((oldContent, newContent, author, actionType = 'edit') => {
+    const oldText = oldContent.replace(/<[^>]*>/g, '').trim();
+    const newText = newContent.replace(/<[^>]*>/g, '').trim();
+    
+    const oldWords = oldText.split(/\s+/).filter(word => word.length > 0);
+    const newWords = newText.split(/\s+/).filter(word => word.length > 0);
+    
+    const wordsAdded = newWords.length - oldWords.length;
+    const wordsRemoved = oldWords.length - newWords.length;
+    
+    // Detect if content was added, removed, or modified
+    let changeType = 'modified';
+    let contentSummary = '';
+    
+    if (wordsAdded > 0 && wordsRemoved === 0) {
+      changeType = 'added';
+      // Extract the new content (simplified)
+      const addedContent = newText.substring(oldText.length).trim();
+      contentSummary = addedContent.length > 50 
+        ? `"${addedContent.substring(0, 50)}..."`
+        : `"${addedContent}"`;
+    } else if (wordsRemoved > 0 && wordsAdded === 0) {
+      changeType = 'removed';
+      contentSummary = `${wordsRemoved} word${wordsRemoved > 1 ? 's' : ''}`;
+    } else if (wordsAdded > 0 || wordsRemoved > 0) {
+      changeType = 'modified';
+      contentSummary = `${Math.abs(wordsAdded - wordsRemoved)} word${Math.abs(wordsAdded - wordsRemoved) > 1 ? 's' : ''}`;
+    } else {
+      changeType = 'edited';
+      contentSummary = 'content';
+    }
+    
+    // Generate announcement
+    let announcement = '';
+    if (author === 'You') {
+      announcement = `You ${changeType} note: ${contentSummary}`;
+    } else {
+      announcement = `${author} ${changeType} note: ${contentSummary}`;
+    }
+    
+    return {
+      announcement,
+      changeType,
+      contentSummary,
+      wordsAdded,
+      wordsRemoved,
+      actionType,
+      timestamp: Date.now(),
+      author
+    };
+  }, []);
+
+  /**
+   * Announce note changes for Blind Mode
+   * 
+   * @param {Object} changeAnalysis - Analysis result from analyzeNoteChange
+   */
+  const announceNoteChange = useCallback((changeAnalysis) => {
+    if (!blindModeEnabled) return;
+    
+    // Clear any existing announcement
+    if (announcementTimeoutRef.current) {
+      clearTimeout(announcementTimeoutRef.current);
+    }
+    
+    // Set new announcement
+    setCurrentAnnouncement(changeAnalysis.announcement);
+    
+    // Announce the change
+    announceToScreenReader(changeAnalysis.announcement);
+    
+    // Update change history
+    setNoteChangeHistory(prev => [...prev.slice(-9), changeAnalysis]);
+    setLastNoteUpdate(changeAnalysis);
+    
+    // Clear announcement after a delay
+    announcementTimeoutRef.current = setTimeout(() => {
+      setCurrentAnnouncement(null);
+    }, 2000);
+  }, [blindModeEnabled, announceToScreenReader]);
 
   /**
    * Initialize editor content from room data
@@ -75,16 +174,69 @@ const NotesEditor = ({
     if (roomData?.notes !== undefined && roomData.notes !== content) {
       setContent(roomData.notes);
       setHasUnsavedChanges(false);
+      previousContentRef.current = roomData.notes;
     }
   }, [roomData?.notes, content]);
+
+  /**
+   * Handle external content changes from other users
+   */
+  useEffect(() => {
+    if (roomData?.notes !== undefined && roomData.notes !== content && roomData.notes !== previousContentRef.current) {
+      const previousContent = previousContentRef.current;
+      
+      setContent(roomData.notes);
+      setHasUnsavedChanges(false);
+      
+      // Analyze changes for Blind Mode
+      if (blindModeEnabled && previousContent !== roomData.notes) {
+        // Extract author from socket metadata if available
+        const author = notesMetadata?.author || 'Another user';
+        const actionType = notesMetadata?.actionType || 'edit';
+        const changeAnalysis = analyzeNoteChange(previousContent, roomData.notes, author, actionType);
+        announceNoteChange(changeAnalysis);
+      }
+      
+      // Update previous content reference
+      previousContentRef.current = roomData.notes;
+    }
+  }, [roomData?.notes, content, blindModeEnabled, analyzeNoteChange, announceNoteChange, notesMetadata]);
+
+  /**
+   * Cleanup timeouts on unmount
+   */
+  useEffect(() => {
+    return () => {
+      if (changeTimeoutRef.current) {
+        clearTimeout(changeTimeoutRef.current);
+      }
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      if (announcementTimeoutRef.current) {
+        clearTimeout(announcementTimeoutRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Handle content changes with debouncing and batching
    */
   const handleContentChange = useCallback((newContent) => {
+    const previousContent = previousContentRef.current;
+    
     setContent(newContent);
     setHasUnsavedChanges(true);
     setLastSaved(Date.now());
+
+    // Analyze changes for Blind Mode
+    if (blindModeEnabled && previousContent !== newContent) {
+      const changeAnalysis = analyzeNoteChange(previousContent, newContent, 'You', 'edit');
+      announceNoteChange(changeAnalysis);
+    }
+    
+    // Update previous content reference
+    previousContentRef.current = newContent;
 
     // Clear existing timeout
     if (changeTimeoutRef.current) {
@@ -110,7 +262,7 @@ const NotesEditor = ({
         processBatchedChanges();
       }
     }, CHANGE_DEBOUNCE_MS);
-  }, [user, isProcessingChanges, processBatchedChanges]);
+  }, [user, isProcessingChanges, processBatchedChanges, blindModeEnabled, analyzeNoteChange, announceNoteChange]);
 
   /**
    * Process batched changes to reduce network traffic
@@ -364,6 +516,18 @@ const NotesEditor = ({
           event.preventDefault();
           handleSave();
           break;
+        case 'n':
+        case 'N':
+          // Ctrl+Shift+N: Read last note update
+          if (event.shiftKey) {
+            event.preventDefault();
+            if (blindModeEnabled && lastNoteUpdate) {
+              announceToScreenReader(`Last note update: ${lastNoteUpdate.announcement}`);
+            } else if (blindModeEnabled) {
+              announceToScreenReader('No recent note updates to announce');
+            }
+          }
+          break;
         default:
           // No shortcut for this key
           break;
@@ -374,7 +538,7 @@ const NotesEditor = ({
     if (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete') {
       handleTypingStart();
     }
-  }, [keyboardNavigation, applyFormatting, handleTypingStart]);
+  }, [keyboardNavigation, applyFormatting, handleTypingStart, blindModeEnabled, lastNoteUpdate, announceToScreenReader]);
 
   /**
    * Handle keyboard up
@@ -740,6 +904,24 @@ const NotesEditor = ({
         {getEditorStatus()}
       </div>
 
+      {/* Blind Mode Note Change Announcements */}
+      {blindModeEnabled && (
+        <div 
+          className="sr-only" 
+          aria-live="polite" 
+          aria-atomic="true"
+          id="note-change-announcements"
+          role="status"
+          aria-label="Note change announcements"
+        >
+          {currentAnnouncement && (
+            <span key={Date.now()}>
+              {currentAnnouncement}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Keyboard Shortcuts Help */}
       {keyboardNavigation && (
         <div className="sr-only" id="editor-keyboard-shortcuts">
@@ -749,6 +931,9 @@ const NotesEditor = ({
             <li>Ctrl+I: Italic</li>
             <li>Ctrl+U: Underline</li>
             <li>Ctrl+S: Save</li>
+            {blindModeEnabled && (
+              <li>Ctrl+Shift+N: Read last note update</li>
+            )}
             <li>Tab: Navigate between elements</li>
             <li>Click: Select text</li>
           </ul>

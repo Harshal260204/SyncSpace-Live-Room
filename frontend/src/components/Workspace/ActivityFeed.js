@@ -14,6 +14,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
+import { useBlindMode } from '../../contexts/BlindModeContext';
 
 /**
  * Activity Feed Component
@@ -31,6 +32,7 @@ const ActivityFeed = ({
   const { announce, screenReader, keyboardNavigation } = useAccessibility();
   const { socket, connected, sendEvent } = useSocket();
   const { user } = useUser();
+  const { enabled: blindModeEnabled, announceToScreenReader } = useBlindMode();
 
   // Activity feed state
   const [activities, setActivities] = useState([]);
@@ -196,11 +198,16 @@ const ActivityFeed = ({
       });
     }
 
-    // Announce to screen readers
-    if (screenReader) {
+    // Announce for Blind Mode
+    if (blindModeEnabled) {
+      announceToScreenReader(`Activity: ${newActivity.description}`);
+    }
+
+    // Announce to screen readers (fallback)
+    if (screenReader && !blindModeEnabled) {
       announce(`Activity: ${newActivity.description}`, 'polite');
     }
-  }, [screenReader, announce, updateUserPresence]);
+  }, [screenReader, announce, updateUserPresence, blindModeEnabled, announceToScreenReader]);
 
   /**
    * Handle user join activity

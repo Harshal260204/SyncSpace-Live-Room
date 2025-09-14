@@ -16,6 +16,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { SocketProvider } from './contexts/SocketContext';
 import { UserProvider } from './contexts/UserContext';
 import { AccessibilityProvider } from './contexts/AccessibilityContext';
+import { BlindModeProvider } from './contexts/BlindModeContext';
 
 // Import main App component
 import App from './App';
@@ -37,12 +38,14 @@ root.render(
       <ThemeProvider>
         {/* Accessibility Provider for screen reader and keyboard navigation */}
         <AccessibilityProvider>
-          {/* User Provider for user state and preferences */}
-          <UserProvider>
-            {/* Socket Provider for real-time communication */}
-            <SocketProvider>
-              {/* Main Application Component */}
-              <App />
+          {/* Blind Mode Provider for completely blind users */}
+          <BlindModeProvider>
+            {/* User Provider for user state and preferences */}
+            <UserProvider>
+              {/* Socket Provider for real-time communication */}
+              <SocketProvider>
+                {/* Main Application Component */}
+                <App />
               
               {/* Toast notifications for user feedback */}
               <Toaster
@@ -73,6 +76,7 @@ root.render(
               <ReactAnnouncer />
             </SocketProvider>
           </UserProvider>
+          </BlindModeProvider>
         </AccessibilityProvider>
       </ThemeProvider>
     </BrowserRouter>

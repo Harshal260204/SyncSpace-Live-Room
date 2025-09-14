@@ -9,6 +9,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useTheme } from './contexts/ThemeContext';
 import { useAccessibility } from './contexts/AccessibilityContext';
+import { useBlindMode } from './contexts/BlindModeContext';
 
 // Import page components
 import Dashboard from './pages/Dashboard';
@@ -29,13 +30,14 @@ import LoadingSpinner from './components/UI/LoadingSpinner';
 function App() {
   const { theme, highContrast } = useTheme();
   const { fontSize } = useAccessibility();
+  const { enabled: blindModeEnabled, initialized: blindModeInitialized } = useBlindMode();
 
   // Apply theme classes to document
   React.useEffect(() => {
     const root = document.documentElement;
     
     // Remove existing theme classes
-    root.classList.remove('dark', 'hc-mode');
+    root.classList.remove('dark', 'hc-mode', 'blind-mode');
     
     // Apply current theme
     if (highContrast) {
@@ -44,11 +46,16 @@ function App() {
       root.classList.add('dark');
     }
     
+    // Apply Blind Mode class
+    if (blindModeEnabled && blindModeInitialized) {
+      root.classList.add('blind-mode');
+    }
+    
     // Apply font size class
     root.classList.remove('font-small', 'font-base', 'font-large');
     root.classList.add(`font-${fontSize}`);
     
-  }, [theme, highContrast, fontSize]);
+  }, [theme, highContrast, fontSize, blindModeEnabled, blindModeInitialized]);
 
   // Apply accessibility attributes
   React.useEffect(() => {
@@ -64,7 +71,14 @@ function App() {
       root.removeAttribute('data-high-contrast');
     }
     
-  }, [theme, highContrast]);
+    // Set Blind Mode for screen readers and assistive technologies
+    if (blindModeEnabled && blindModeInitialized) {
+      root.setAttribute('data-blind-mode', 'true');
+    } else {
+      root.removeAttribute('data-blind-mode');
+    }
+    
+  }, [theme, highContrast, blindModeEnabled, blindModeInitialized]);
 
   return (
     <div 
@@ -72,10 +86,12 @@ function App() {
         min-h-screen transition-colors duration-300
         ${highContrast ? 'hc-mode' : ''}
         ${theme === 'dark' ? 'dark' : ''}
+        ${blindModeEnabled && blindModeInitialized ? 'blind-mode' : ''}
         font-${fontSize}
       `}
       role="application"
       aria-label="Live Room Collaborative Workspace"
+      data-blind-mode={blindModeEnabled && blindModeInitialized ? 'true' : 'false'}
     >
       {/* Skip link for keyboard navigation */}
       <a 
