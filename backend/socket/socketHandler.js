@@ -9,6 +9,7 @@
 const Room = require('../models/Room');
 const User = require('../models/User');
 const { v4: uuidv4 } = require('uuid');
+const { socketErrorHandler, logger } = require('../utils/errorHandler');
 
 /**
  * Socket event handler for Live Room collaboration
@@ -23,14 +24,14 @@ const socketHandler = (io) => {
     try {
       await Room.cleanupInactiveRooms();
       await User.cleanupInactiveUsers();
-      console.log('🧹 Cleaned up inactive rooms and users');
+      logger.info('🧹 Cleaned up inactive rooms and users');
     } catch (error) {
-      console.error('❌ Error during cleanup:', error);
+      logger.error('❌ Error during cleanup:', error);
     }
   }, parseInt(process.env.ROOM_CLEANUP_INTERVAL) || 300000);
 
   io.on('connection', async (socket) => {
-    console.log(`🔌 New socket connection: ${socket.id}`);
+    logger.info(`🔌 New socket connection: ${socket.id}`);
     
     // Store connection info
     activeConnections.set(socket.id, {
@@ -169,11 +170,7 @@ const socketHandler = (io) => {
         console.log(`👤 ${username} joined room ${roomId}`);
 
       } catch (error) {
-        console.error('❌ Error joining room:', error);
-        socket.emit('error', { 
-          message: 'Failed to join room',
-          code: 'JOIN_ERROR' 
-        });
+        socketErrorHandler(socket, error, 'joinRoom');
       }
     });
 
@@ -225,8 +222,7 @@ const socketHandler = (io) => {
         }
 
       } catch (error) {
-        console.error('❌ Error handling code change:', error);
-        socket.emit('error', { message: 'Failed to update code', code: 'CODE_UPDATE_ERROR' });
+        socketErrorHandler(socket, error, 'code-change');
       }
     });
 
