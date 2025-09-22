@@ -9,72 +9,128 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
-/* CSS Custom Properties for theming and accessibility */
+/* CSS Custom Properties for modern theming and accessibility */
 :root {
-  /* Light theme colors */
+  /* Light theme colors - modern palette */
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
   --bg-tertiary: #f1f5f9;
+  --bg-glass: rgba(255, 255, 255, 0.1);
+  --bg-glass-strong: rgba(255, 255, 255, 0.2);
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #64748b;
   --border-primary: #e2e8f0;
   --border-secondary: #cbd5e1;
-  --accent-primary: #3b82f6;
-  --accent-secondary: #2563eb;
+  --border-glass: rgba(255, 255, 255, 0.2);
+  --accent-primary: #0ea5e9;
+  --accent-secondary: #0284c7;
+  --accent-gradient: linear-gradient(135deg, #0ea5e9, #0284c7);
+  
+  /* Workspace module colors */
+  --code-primary: #22c55e;
+  --code-gradient: linear-gradient(135deg, #22c55e, #16a34a);
+  --notes-primary: #eab308;
+  --notes-gradient: linear-gradient(135deg, #eab308, #ca8a04);
+  --canvas-primary: #d946ef;
+  --canvas-gradient: linear-gradient(135deg, #d946ef, #c026d3);
+  --chat-primary: #0ea5e9;
+  --chat-gradient: linear-gradient(135deg, #0ea5e9, #0284c7);
+  
+  /* Status colors */
   --success: #22c55e;
   --warning: #f59e0b;
   --error: #ef4444;
+  --info: #0ea5e9;
+  
+  /* Glassmorphism properties */
+  --glass-blur: blur(20px);
+  --glass-blur-light: blur(10px);
+  --glass-blur-strong: blur(30px);
   
   /* Toast notification colors */
-  --toast-bg: #ffffff;
+  --toast-bg: rgba(255, 255, 255, 0.95);
   --toast-text: #0f172a;
-  --toast-border: #e2e8f0;
+  --toast-border: rgba(255, 255, 255, 0.2);
   
   /* Focus ring colors */
-  --focus-ring: #3b82f6;
+  --focus-ring: #0ea5e9;
   --focus-ring-offset: #ffffff;
+  --focus-ring-glow: 0 0 0 3px rgba(14, 165, 233, 0.1);
   
-  /* Shadow colors */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  /* Enhanced shadow colors */
+  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
+  --shadow-medium: 0 4px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-strong: 0 10px 40px -10px rgba(0, 0, 0, 0.2), 0 2px 10px -2px rgba(0, 0, 0, 0.1);
+  --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  --shadow-floating: 0 20px 40px -12px rgba(0, 0, 0, 0.25);
+  --shadow-glow-blue: 0 0 20px rgba(14, 165, 233, 0.4);
+  --shadow-glow-green: 0 0 20px rgba(34, 197, 94, 0.4);
+  --shadow-glow-purple: 0 0 20px rgba(217, 70, 239, 0.4);
+  --shadow-glow-yellow: 0 0 20px rgba(234, 179, 8, 0.4);
   
-  /* Animation durations */
+  /* Animation durations and easing */
   --transition-fast: 150ms;
   --transition-normal: 300ms;
   --transition-slow: 500ms;
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --ease-elastic: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Dark theme colors */
+/* Dark theme colors - enhanced for modern UI */
 .dark {
   --bg-primary: #0f172a;
   --bg-secondary: #1e293b;
   --bg-tertiary: #334155;
+  --bg-glass: rgba(0, 0, 0, 0.1);
+  --bg-glass-strong: rgba(0, 0, 0, 0.2);
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
   --text-muted: #94a3b8;
   --border-primary: #334155;
   --border-secondary: #475569;
-  --accent-primary: #60a5fa;
-  --accent-secondary: #3b82f6;
+  --border-glass: rgba(255, 255, 255, 0.1);
+  --accent-primary: #38bdf8;
+  --accent-secondary: #0ea5e9;
+  --accent-gradient: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  
+  /* Workspace module colors for dark mode */
+  --code-primary: #4ade80;
+  --code-gradient: linear-gradient(135deg, #4ade80, #22c55e);
+  --notes-primary: #facc15;
+  --notes-gradient: linear-gradient(135deg, #facc15, #eab308);
+  --canvas-primary: #e879f9;
+  --canvas-gradient: linear-gradient(135deg, #e879f9, #d946ef);
+  --chat-primary: #38bdf8;
+  --chat-gradient: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  
+  /* Status colors for dark mode */
   --success: #4ade80;
   --warning: #fbbf24;
   --error: #f87171;
+  --info: #38bdf8;
   
   /* Toast notification colors for dark mode */
-  --toast-bg: #1e293b;
+  --toast-bg: rgba(30, 41, 59, 0.95);
   --toast-text: #f8fafc;
-  --toast-border: #334155;
+  --toast-border: rgba(255, 255, 255, 0.1);
   
   /* Focus ring colors for dark mode */
-  --focus-ring: #60a5fa;
+  --focus-ring: #38bdf8;
   --focus-ring-offset: #0f172a;
+  --focus-ring-glow: 0 0 0 3px rgba(56, 189, 248, 0.1);
   
-  /* Shadow colors for dark mode */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+  /* Enhanced shadow colors for dark mode */
+  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.3), 0 10px 20px -2px rgba(0, 0, 0, 0.2);
+  --shadow-medium: 0 4px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  --shadow-strong: 0 10px 40px -10px rgba(0, 0, 0, 0.5), 0 2px 10px -2px rgba(0, 0, 0, 0.3);
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --shadow-floating: 0 20px 40px -12px rgba(0, 0, 0, 0.4);
+  --shadow-glow-blue: 0 0 20px rgba(56, 189, 248, 0.4);
+  --shadow-glow-green: 0 0 20px rgba(74, 222, 128, 0.4);
+  --shadow-glow-purple: 0 0 20px rgba(232, 121, 249, 0.4);
+  --shadow-glow-yellow: 0 0 20px rgba(250, 204, 21, 0.4);
 }
 
 /* High contrast mode colors */
@@ -276,29 +332,136 @@ body {
   }
 }
 
-/* Custom component styles */
+/* Modern component styles with glassmorphism */
 .btn {
-  @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm transition-colors duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-semibold rounded-xl shadow-sm transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed touch-target;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn:hover::before {
+  left: 100%;
 }
 
 .btn-primary {
-  @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  background: var(--accent-gradient);
+  color: white;
+  box-shadow: var(--shadow-glow-blue);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow-blue), var(--shadow-floating);
 }
 
 .btn-secondary {
-  @apply bg-secondary-200 text-secondary-900 hover:bg-secondary-300 focus:ring-secondary-500 dark:bg-secondary-700 dark:text-secondary-100 dark:hover:bg-secondary-600;
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-glass);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-glass-strong);
+  transform: translateY(-1px);
 }
 
 .btn-outline {
-  @apply border-primary-300 text-primary-700 bg-white hover:bg-primary-50 focus:ring-primary-500 dark:border-primary-600 dark:text-primary-400 dark:bg-transparent dark:hover:bg-primary-900;
+  background: transparent;
+  border: 2px solid var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.btn-outline:hover {
+  background: var(--accent-primary);
+  color: white;
+  transform: translateY(-1px);
 }
 
 .input {
-  @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400;
+  @apply block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 touch-target;
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur-light);
+  border: 1px solid var(--border-glass);
+  transition: all var(--transition-normal) var(--ease-smooth);
+}
+
+.input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: var(--focus-ring-glow);
+  background: var(--bg-primary);
 }
 
 .card {
-  @apply bg-white dark:bg-gray-800 shadow-md rounded-lg border border-gray-200 dark:border-gray-700;
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-glass);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--shadow-glass);
+  transition: all var(--transition-normal) var(--ease-smooth);
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-floating);
+}
+
+/* Floating card variant */
+.card-floating {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-glass);
+  border-radius: 24px;
+  padding: 32px;
+  box-shadow: var(--shadow-floating);
+  transition: all var(--transition-normal) var(--ease-smooth);
+}
+
+.card-floating:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: var(--shadow-strong);
+}
+
+/* Glass card variant */
+.card-glass {
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-glass);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--shadow-glass);
+}
+
+/* Module-specific card styles */
+.card-code {
+  border-left: 4px solid var(--code-primary);
+  background: linear-gradient(135deg, var(--bg-glass), rgba(34, 197, 94, 0.05));
+}
+
+.card-notes {
+  border-left: 4px solid var(--notes-primary);
+  background: linear-gradient(135deg, var(--bg-glass), rgba(234, 179, 8, 0.05));
+}
+
+.card-canvas {
+  border-left: 4px solid var(--canvas-primary);
+  background: linear-gradient(135deg, var(--bg-glass), rgba(217, 70, 239, 0.05));
+}
+
+.card-chat {
+  border-left: 4px solid var(--chat-primary);
+  background: linear-gradient(135deg, var(--bg-glass), rgba(14, 165, 233, 0.05));
 }
 
 /* Animation classes */
