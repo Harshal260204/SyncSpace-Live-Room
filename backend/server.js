@@ -9,6 +9,9 @@
  * @version 1.0.0
  */
 
+// Load environment variables first
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -16,7 +19,12 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+
+// Debug environment variables
+console.log('🔍 Environment Variables Debug:');
+console.log('MONGODB_URI:', process.env.MONGODB_URI);
+console.log('PORT:', process.env.PORT);
+console.log('NODE_ENV:', process.env.NODE_ENV);
 
 // Import custom modules
 const connectDB = require('./config/database');
@@ -28,8 +36,19 @@ const userRoutes = require('./routes/userRoutes');
 const app = express();
 const server = http.createServer(app);
 
-// Connect to MongoDB
-connectDB();
+// Trust proxy for rate limiting and IP detection
+app.set('trust proxy', 1);
+
+// Connect to MongoDB and wait for connection
+const startServer = async () => {
+  try {
+    await connectDB();
+    console.log('✅ Database connection established');
+  } catch (error) {
+    console.error('❌ Failed to connect to database:', error);
+    process.exit(1);
+  }
+};
 
 // Security middleware
 app.use(helmet({
@@ -57,12 +76,20 @@ app.use(cors(corsOptions));
 // Rate limiting to prevent abuse
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // Increased limit for development
   message: {
     error: 'Too many requests from this IP, please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting in development for easier testing
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Rate limiting skipped for development: ${req.method} ${req.path}`);
+      return true;
+    }
+    return false;
+  },
 });
 
 app.use('/api/', limiter);
@@ -80,6 +107,17 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
   });
 });
+
+// Debug endpoint to clear rate limit (development only)
+if (process.env.NODE_ENV === 'development') {
+  app.get('/debug/clear-rate-limit', (req, res) => {
+    // Clear rate limit store
+    if (limiter.resetKey) {
+      limiter.resetKey(req.ip);
+    }
+    res.json({ message: 'Rate limit cleared for IP: ' + req.ip });
+  });
+}
 
 // API routes
 app.use('/api/rooms', roomRoutes);
@@ -105,6 +143,7 @@ app.use((err, req, res, next) => {
     const errors = Object.values(err.errors).map(e => e.message);
     return res.status(400).json({
       error: 'Validation Error',
+      message: 'Invalid data provided',
       details: errors,
     });
   }
@@ -117,6 +156,14 @@ app.use((err, req, res, next) => {
     });
   }
   
+  // Mongoose cast error
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      error: 'Invalid ID format',
+      message: 'The provided ID is not valid',
+    });
+  }
+  
   // JWT errors
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({
@@ -125,9 +172,26 @@ app.use((err, req, res, next) => {
     });
   }
   
+  // Socket.io connection errors
+  if (err.code === 'ECONNREFUSED') {
+    return res.status(503).json({
+      error: 'Service Unavailable',
+      message: 'Database connection failed',
+    });
+  }
+  
+  // Rate limiting errors
+  if (err.status === 429) {
+    return res.status(429).json({
+      error: 'Too Many Requests',
+      message: 'Rate limit exceeded. Please try again later.',
+    });
+  }
+  
   // Default error
   res.status(err.status || 500).json({
     error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message,
+    message: process.env.NODE_ENV === 'production' ? 'An unexpected error occurred' : err.message,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
@@ -157,16 +221,18 @@ process.on('SIGINT', () => {
   });
 });
 
-// Start server
+// Start server after database connection
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`
+startServer().then(() => {
+  server.listen(PORT, () => {
+    console.log(`
 🚀 Live Room Backend Server Started
 📍 Port: ${PORT}
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
 🔗 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}
 📊 Health Check: http://localhost:${PORT}/health
-  `);
+    `);
+  });
 });
 
 module.exports = { app, server, io };

@@ -7,41 +7,26 @@
  */
 
 const express = require('express');
-const { body, param, validationResult } = require('express-validator');
+const { body, param } = require('express-validator');
 const User = require('../models/User');
+const { handleValidationErrors, validateUserCreation, validateUserId, validateSessionId } = require('../middleware/validation');
+const { sendServerError, sendNotFoundError, sendConflictError } = require('../utils/errorHandler');
 
 const router = express.Router();
-
-// Validation middleware
-const handleValidationErrors = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: 'Validation Error',
-      details: errors.array().map(err => ({
-        field: err.path,
-        message: err.msg,
-        value: err.value,
-      })),
-    });
-  }
-  next();
-};
 
 /**
  * POST /api/users
  * Create a new anonymous user session
  */
 router.post('/', [
-  body('username').isLength({ min: 1, max: 50 }).withMessage('Username must be between 1 and 50 characters'),
-  body('username').matches(/^[a-zA-Z0-9\s\-_]+$/).withMessage('Username can only contain letters, numbers, spaces, hyphens, and underscores'),
-  body('preferences').optional().isObject().withMessage('Preferences must be an object'),
+  ...validateUserCreation,
   handleValidationErrors,
 ], async (req, res) => {
   try {
     const { username, preferences = {} } = req.body;
-    const sessionId = require('uuid').v4();
-    const userId = require('uuid').v4();
+    const { v4: uuidv4 } = require('uuid');
+    const sessionId = uuidv4();
+    const userId = uuidv4();
 
     // Check if username is already taken in active sessions
     const existingUser = await User.findOne({
@@ -50,10 +35,7 @@ router.post('/', [
     });
 
     if (existingUser) {
-      return res.status(409).json({
-        error: 'Username taken',
-        message: 'This username is already in use. Please choose a different one.',
-      });
+      return sendConflictError(res, 'Username taken', 'This username is already in use. Please choose a different one.');
     }
 
     // Create new user
@@ -75,11 +57,7 @@ router.post('/', [
     });
 
   } catch (error) {
-    console.error('❌ Error creating user:', error);
-    res.status(500).json({
-      error: 'Failed to create user',
-      message: 'An error occurred while creating the user session',
-    });
+    sendServerError(res, 'Failed to create user', 'An error occurred while creating the user session');
   }
 });
 
@@ -88,7 +66,7 @@ router.post('/', [
  * Get user details by user ID
  */
 router.get('/:userId', [
-  param('userId').isLength({ min: 1 }).withMessage('User ID is required'),
+  ...validateUserId,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -96,10 +74,7 @@ router.get('/:userId', [
     
     const user = await User.findByUserId(userId);
     if (!user) {
-      return res.status(404).json({
-        error: 'User not found',
-        message: 'The requested user does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'User not found', 'The requested user does not exist or is inactive');
     }
 
     // Return user data without sensitive information
@@ -116,11 +91,7 @@ router.get('/:userId', [
     res.json(userData);
 
   } catch (error) {
-    console.error('❌ Error fetching user:', error);
-    res.status(500).json({
-      error: 'Failed to fetch user',
-      message: 'An error occurred while retrieving user details',
-    });
+    sendServerError(res, 'Failed to fetch user', 'An error occurred while retrieving user details');
   }
 });
 
@@ -129,7 +100,7 @@ router.get('/:userId', [
  * Update user preferences and settings
  */
 router.put('/:userId', [
-  param('userId').isLength({ min: 1 }).withMessage('User ID is required'),
+  ...validateUserId,
   body('username').optional().isLength({ min: 1, max: 50 }).withMessage('Username must be between 1 and 50 characters'),
   body('username').optional().matches(/^[a-zA-Z0-9\s\-_]+$/).withMessage('Username can only contain letters, numbers, spaces, hyphens, and underscores'),
   body('preferences').optional().isObject().withMessage('Preferences must be an object'),
@@ -141,10 +112,7 @@ router.put('/:userId', [
     
     const user = await User.findByUserId(userId);
     if (!user) {
-      return res.status(404).json({
-        error: 'User not found',
-        message: 'The requested user does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'User not found', 'The requested user does not exist or is inactive');
     }
 
     // Check if new username is already taken (if username is being changed)
@@ -156,10 +124,7 @@ router.put('/:userId', [
       });
 
       if (existingUser) {
-        return res.status(409).json({
-          error: 'Username taken',
-          message: 'This username is already in use. Please choose a different one.',
-        });
+        return sendConflictError(res, 'Username taken', 'This username is already in use. Please choose a different one.');
       }
     }
 
@@ -179,11 +144,7 @@ router.put('/:userId', [
     });
 
   } catch (error) {
-    console.error('❌ Error updating user:', error);
-    res.status(500).json({
-      error: 'Failed to update user',
-      message: 'An error occurred while updating the user',
-    });
+    sendServerError(res, 'Failed to update user', 'An error occurred while updating the user');
   }
 });
 
@@ -192,7 +153,7 @@ router.put('/:userId', [
  * Deactivate a user session (soft delete)
  */
 router.delete('/:userId', [
-  param('userId').isLength({ min: 1 }).withMessage('User ID is required'),
+  ...validateUserId,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -215,11 +176,7 @@ router.delete('/:userId', [
     });
 
   } catch (error) {
-    console.error('❌ Error deactivating user:', error);
-    res.status(500).json({
-      error: 'Failed to deactivate user',
-      message: 'An error occurred while deactivating the user session',
-    });
+    sendServerError(res, 'Failed to deactivate user', 'An error occurred while deactivating the user session');
   }
 });
 
@@ -228,7 +185,7 @@ router.delete('/:userId', [
  * Get user activity statistics
  */
 router.get('/:userId/activity', [
-  param('userId').isLength({ min: 1 }).withMessage('User ID is required'),
+  ...validateUserId,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -236,10 +193,7 @@ router.get('/:userId/activity', [
     
     const user = await User.findByUserId(userId);
     if (!user) {
-      return res.status(404).json({
-        error: 'User not found',
-        message: 'The requested user does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'User not found', 'The requested user does not exist or is inactive');
     }
 
     res.json({
@@ -251,11 +205,7 @@ router.get('/:userId/activity', [
     });
 
   } catch (error) {
-    console.error('❌ Error fetching user activity:', error);
-    res.status(500).json({
-      error: 'Failed to fetch user activity',
-      message: 'An error occurred while retrieving user activity data',
-    });
+    sendServerError(res, 'Failed to fetch user activity', 'An error occurred while retrieving user activity data');
   }
 });
 
@@ -264,7 +214,7 @@ router.get('/:userId/activity', [
  * Update user's time spent in current session
  */
 router.post('/:userId/update-time', [
-  param('userId').isLength({ min: 1 }).withMessage('User ID is required'),
+  ...validateUserId,
   body('minutes').isInt({ min: 0 }).withMessage('Minutes must be a non-negative integer'),
   handleValidationErrors,
 ], async (req, res) => {
@@ -274,10 +224,7 @@ router.post('/:userId/update-time', [
     
     const user = await User.findByUserId(userId);
     if (!user) {
-      return res.status(404).json({
-        error: 'User not found',
-        message: 'The requested user does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'User not found', 'The requested user does not exist or is inactive');
     }
 
     await user.updateTimeSpent(minutes);
@@ -289,11 +236,7 @@ router.post('/:userId/update-time', [
     });
 
   } catch (error) {
-    console.error('❌ Error updating user time:', error);
-    res.status(500).json({
-      error: 'Failed to update time',
-      message: 'An error occurred while updating user time',
-    });
+    sendServerError(res, 'Failed to update time', 'An error occurred while updating user time');
   }
 });
 
@@ -302,7 +245,7 @@ router.post('/:userId/update-time', [
  * Get user by session ID (for socket connections)
  */
 router.get('/session/:sessionId', [
-  param('sessionId').isLength({ min: 1 }).withMessage('Session ID is required'),
+  ...validateSessionId,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -310,10 +253,7 @@ router.get('/session/:sessionId', [
     
     const user = await User.findBySessionId(sessionId);
     if (!user) {
-      return res.status(404).json({
-        error: 'Session not found',
-        message: 'The requested session does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'Session not found', 'The requested session does not exist or is inactive');
     }
 
     res.json({
@@ -326,11 +266,7 @@ router.get('/session/:sessionId', [
     });
 
   } catch (error) {
-    console.error('❌ Error fetching user by session:', error);
-    res.status(500).json({
-      error: 'Failed to fetch user session',
-      message: 'An error occurred while retrieving user session data',
-    });
+    sendServerError(res, 'Failed to fetch user session', 'An error occurred while retrieving user session data');
   }
 });
 

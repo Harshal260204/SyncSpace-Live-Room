@@ -7,43 +7,31 @@
  */
 
 const express = require('express');
-const { body, param, query, validationResult } = require('express-validator');
+const { query } = require('express-validator');
 const Room = require('../models/Room');
-const User = require('../models/User');
+const { handleValidationErrors, validateRoomCreation, validatePagination, validateRoomId } = require('../middleware/validation');
+const { sendServerError, sendNotFoundError } = require('../utils/errorHandler');
 
 const router = express.Router();
-
-// Validation middleware
-const handleValidationErrors = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: 'Validation Error',
-      details: errors.array().map(err => ({
-        field: err.path,
-        message: err.msg,
-        value: err.value,
-      })),
-    });
-  }
-  next();
-};
 
 /**
  * GET /api/rooms
  * Get list of active rooms with pagination and filtering
  */
 router.get('/', [
-  query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
-  query('limit').optional().isInt({ min: 1, max: 50 }).withMessage('Limit must be between 1 and 50'),
+  ...validatePagination,
   query('search').optional().isLength({ min: 1, max: 100 }).withMessage('Search term must be between 1 and 100 characters'),
   handleValidationErrors,
 ], async (req, res) => {
   try {
+    console.log('📡 GET /api/rooms - Starting room fetch');
+    
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search;
     const skip = (page - 1) * limit;
+
+    console.log('📡 Query parameters:', { page, limit, search, skip });
 
     // Build query
     let query = { isActive: true };
@@ -54,16 +42,38 @@ router.get('/', [
       ];
     }
 
-    // Get rooms with pagination
-    const rooms = await Room.find(query)
-      .select('roomId roomName description currentParticipants maxParticipants createdAt lastActivity settings')
-      .sort({ lastActivity: -1 })
-      .skip(skip)
-      .limit(limit);
+    console.log('📡 Database query:', query);
 
-    // Get total count for pagination
-    const totalRooms = await Room.countDocuments(query);
+    // Get rooms with pagination using aggregation for better performance
+    const rooms = await Room.aggregate([
+      { $match: query },
+      { 
+        $project: {
+          roomId: 1,
+          roomName: 1,
+          description: 1,
+          currentParticipants: 1,
+          maxParticipants: 1,
+          createdAt: 1,
+          lastActivity: 1,
+          settings: 1
+        }
+      },
+      { $sort: { lastActivity: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ]);
+
+    console.log('📡 Found rooms:', rooms.length);
+
+    // Get total count for pagination with proper error handling
+    const totalRooms = await Room.countDocuments(query).catch(err => {
+      console.error('❌ Error counting rooms:', err);
+      return 0;
+    });
     const totalPages = Math.ceil(totalRooms / limit);
+
+    console.log('📡 Total rooms:', totalRooms);
 
     res.json({
       rooms,
@@ -76,12 +86,11 @@ router.get('/', [
       },
     });
 
+    console.log('📡 Successfully sent room data');
+
   } catch (error) {
-    console.error('❌ Error fetching rooms:', error);
-    res.status(500).json({
-      error: 'Failed to fetch rooms',
-      message: 'An error occurred while retrieving rooms',
-    });
+    console.error('❌ Error in GET /api/rooms:', error);
+    sendServerError(res, 'Failed to fetch rooms', 'An error occurred while retrieving rooms');
   }
 });
 
@@ -90,7 +99,7 @@ router.get('/', [
  * Get specific room details by room ID
  */
 router.get('/:roomId', [
-  param('roomId').isLength({ min: 1 }).withMessage('Room ID is required'),
+  ...validateRoomId,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -98,10 +107,7 @@ router.get('/:roomId', [
     
     const room = await Room.findRoomById(roomId);
     if (!room) {
-      return res.status(404).json({
-        error: 'Room not found',
-        message: 'The requested room does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'Room not found', 'The requested room does not exist or is inactive');
     }
 
     // Return room data without sensitive information
@@ -126,11 +132,7 @@ router.get('/:roomId', [
     res.json(roomData);
 
   } catch (error) {
-    console.error('❌ Error fetching room:', error);
-    res.status(500).json({
-      error: 'Failed to fetch room',
-      message: 'An error occurred while retrieving room details',
-    });
+    sendServerError(res, 'Failed to fetch room', 'An error occurred while retrieving room details');
   }
 });
 
@@ -139,24 +141,24 @@ router.get('/:roomId', [
  * Create a new room
  */
 router.post('/', [
-  body('roomName').optional().isLength({ min: 1, max: 100 }).withMessage('Room name must be between 1 and 100 characters'),
-  body('description').optional().isLength({ max: 500 }).withMessage('Description must be less than 500 characters'),
-  body('maxParticipants').optional().isInt({ min: 2, max: 100 }).withMessage('Max participants must be between 2 and 100'),
-  body('settings').optional().isObject().withMessage('Settings must be an object'),
+  ...validateRoomCreation,
   handleValidationErrors,
 ], async (req, res) => {
   try {
     const { roomName, description, maxParticipants, settings } = req.body;
+    console.log('🏠 Creating room with data:', { roomName, description, maxParticipants, settings });
     
-    // Generate unique room ID
-    const roomId = require('uuid').v4();
+    // Generate unique room ID using UUID
+    const { v4: uuidv4 } = require('uuid');
+    const roomId = uuidv4();
+    console.log('🆔 Generated room ID:', roomId);
     
-    // Create new room
-    const room = new Room({
+    // Create new room with proper validation and error handling
+    const roomData = {
       roomId,
       roomName: roomName || `Room ${roomId.substring(0, 8)}`,
       description: description || '',
-      maxParticipants: maxParticipants || 50,
+      maxParticipants: Math.min(Math.max(maxParticipants || 50, 2), 100), // Ensure valid range
       settings: {
         allowAnonymous: true,
         allowCodeEditing: true,
@@ -170,25 +172,76 @@ router.post('/', [
         userId: 'system', // Will be updated when user joins
         username: 'System',
       },
+    };
+
+    console.log('💾 Creating room with data:', roomData);
+    
+    // Use findOneAndUpdate with upsert to prevent duplicate room creation
+    const room = await Room.findOneAndUpdate(
+      { roomId: roomId },
+      roomData,
+      { 
+        upsert: true, 
+        new: true, 
+        runValidators: true,
+        setDefaultsOnInsert: true
+      }
+    );
+    
+    console.log('✅ Room saved successfully:', { 
+      roomId: room.roomId, 
+      roomName: room.roomName, 
+      participantsCount: room.participants.length,
+      currentParticipants: room.currentParticipants, 
+      maxParticipants: room.maxParticipants,
+      isActive: room.isActive
     });
+    
+    // Verify the room can be found immediately after creation
+    try {
+      const verifyRoom = await Room.findRoomById(room.roomId);
+      if (verifyRoom) {
+        console.log('✅ Room verification successful - room can be found immediately');
+      } else {
+        console.log('⚠️ Room verification failed - room not found immediately after creation');
+      }
+    } catch (verifyError) {
+      console.error('❌ Room verification error:', verifyError);
+    }
 
-    await room.save();
-
-    res.status(201).json({
+    const responseData = {
       roomId: room.roomId,
       roomName: room.roomName,
       description: room.description,
       maxParticipants: room.maxParticipants,
+      currentParticipants: room.currentParticipants,
       settings: room.settings,
       createdAt: room.createdAt,
-    });
+    };
+    
+    console.log('📤 Sending room creation response:', responseData);
+    res.status(201).json(responseData);
 
   } catch (error) {
     console.error('❌ Error creating room:', error);
-    res.status(500).json({
-      error: 'Failed to create room',
-      message: 'An error occurred while creating the room',
-    });
+    
+    // Handle specific error types
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Invalid room data provided',
+        details: Object.values(error.errors).map(e => e.message),
+      });
+    }
+    
+    if (error.code === 11000) {
+      return res.status(400).json({
+        error: 'Duplicate Room ID',
+        message: 'A room with this ID already exists',
+      });
+    }
+    
+    sendServerError(res, 'Failed to create room', 'An error occurred while creating the room');
   }
 });
 
@@ -197,11 +250,8 @@ router.post('/', [
  * Update room settings (only by room creator or admin)
  */
 router.put('/:roomId', [
-  param('roomId').isLength({ min: 1 }).withMessage('Room ID is required'),
-  body('roomName').optional().isLength({ min: 1, max: 100 }).withMessage('Room name must be between 1 and 100 characters'),
-  body('description').optional().isLength({ max: 500 }).withMessage('Description must be less than 500 characters'),
-  body('maxParticipants').optional().isInt({ min: 2, max: 100 }).withMessage('Max participants must be between 2 and 100'),
-  body('settings').optional().isObject().withMessage('Settings must be an object'),
+  ...validateRoomId,
+  ...validateRoomCreation,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -210,37 +260,52 @@ router.put('/:roomId', [
     
     const room = await Room.findRoomById(roomId);
     if (!room) {
-      return res.status(404).json({
-        error: 'Room not found',
-        message: 'The requested room does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'Room not found', 'The requested room does not exist or is inactive');
     }
 
-    // Update room fields
-    if (roomName !== undefined) room.roomName = roomName;
-    if (description !== undefined) room.description = description;
-    if (maxParticipants !== undefined) room.maxParticipants = maxParticipants;
+    // Update room fields with validation and atomic operations
+    const updateData = {};
+    
+    if (roomName !== undefined && roomName.trim().length > 0) {
+      updateData.roomName = roomName.trim();
+    }
+    
+    if (description !== undefined) {
+      updateData.description = description.trim();
+    }
+    
+    if (maxParticipants !== undefined) {
+      // Ensure maxParticipants is within valid range
+      const validMaxParticipants = Math.min(Math.max(maxParticipants, 2), 100);
+      updateData.maxParticipants = validMaxParticipants;
+    }
+    
     if (settings !== undefined) {
-      room.settings = { ...room.settings, ...settings };
+      updateData.settings = { ...room.settings, ...settings };
     }
 
-    await room.save();
+    // Use atomic update to prevent race conditions
+    const updatedRoom = await Room.findByIdAndUpdate(
+      room._id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedRoom) {
+      return sendNotFoundError(res, 'Room not found', 'The room could not be updated');
+    }
 
     res.json({
-      roomId: room.roomId,
-      roomName: room.roomName,
-      description: room.description,
-      maxParticipants: room.maxParticipants,
-      settings: room.settings,
-      updatedAt: room.updatedAt,
+      roomId: updatedRoom.roomId,
+      roomName: updatedRoom.roomName,
+      description: updatedRoom.description,
+      maxParticipants: updatedRoom.maxParticipants,
+      settings: updatedRoom.settings,
+      updatedAt: updatedRoom.updatedAt,
     });
 
   } catch (error) {
-    console.error('❌ Error updating room:', error);
-    res.status(500).json({
-      error: 'Failed to update room',
-      message: 'An error occurred while updating the room',
-    });
+    sendServerError(res, 'Failed to update room', 'An error occurred while updating the room');
   }
 });
 
@@ -249,7 +314,7 @@ router.put('/:roomId', [
  * Deactivate a room (soft delete)
  */
 router.delete('/:roomId', [
-  param('roomId').isLength({ min: 1 }).withMessage('Room ID is required'),
+  ...validateRoomId,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -273,11 +338,7 @@ router.delete('/:roomId', [
     });
 
   } catch (error) {
-    console.error('❌ Error deactivating room:', error);
-    res.status(500).json({
-      error: 'Failed to deactivate room',
-      message: 'An error occurred while deactivating the room',
-    });
+    sendServerError(res, 'Failed to deactivate room', 'An error occurred while deactivating the room');
   }
 });
 
@@ -286,7 +347,7 @@ router.delete('/:roomId', [
  * Get list of active participants in a room
  */
 router.get('/:roomId/participants', [
-  param('roomId').isLength({ min: 1 }).withMessage('Room ID is required'),
+  ...validateRoomId,
   handleValidationErrors,
 ], async (req, res) => {
   try {
@@ -294,10 +355,7 @@ router.get('/:roomId/participants', [
     
     const room = await Room.findRoomById(roomId);
     if (!room) {
-      return res.status(404).json({
-        error: 'Room not found',
-        message: 'The requested room does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'Room not found', 'The requested room does not exist or is inactive');
     }
 
     const participants = room.participants
@@ -317,11 +375,7 @@ router.get('/:roomId/participants', [
     });
 
   } catch (error) {
-    console.error('❌ Error fetching participants:', error);
-    res.status(500).json({
-      error: 'Failed to fetch participants',
-      message: 'An error occurred while retrieving room participants',
-    });
+    sendServerError(res, 'Failed to fetch participants', 'An error occurred while retrieving room participants');
   }
 });
 
@@ -330,7 +384,7 @@ router.get('/:roomId/participants', [
  * Get chat history for a room
  */
 router.get('/:roomId/chat', [
-  param('roomId').isLength({ min: 1 }).withMessage('Room ID is required'),
+  ...validateRoomId,
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
   handleValidationErrors,
 ], async (req, res) => {
@@ -340,10 +394,7 @@ router.get('/:roomId/chat', [
     
     const room = await Room.findRoomById(roomId);
     if (!room) {
-      return res.status(404).json({
-        error: 'Room not found',
-        message: 'The requested room does not exist or is inactive',
-      });
+      return sendNotFoundError(res, 'Room not found', 'The requested room does not exist or is inactive');
     }
 
     const messages = room.chatMessages
@@ -364,11 +415,7 @@ router.get('/:roomId/chat', [
     });
 
   } catch (error) {
-    console.error('❌ Error fetching chat history:', error);
-    res.status(500).json({
-      error: 'Failed to fetch chat history',
-      message: 'An error occurred while retrieving chat messages',
-    });
+    sendServerError(res, 'Failed to fetch chat history', 'An error occurred while retrieving chat messages');
   }
 });
 

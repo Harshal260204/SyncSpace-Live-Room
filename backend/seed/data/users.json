@@ -1,0 +1,147 @@
+[
+  {
+    "userId": "user-alice-dev",
+    "username": "Alice Developer",
+    "preferences": {
+      "accessibility": {
+        "screenReader": false,
+        "highContrast": false,
+        "fontSize": "medium",
+        "announceChanges": true,
+        "keyboardNavigation": true
+      },
+      "appearance": {
+        "theme": "light",
+        "cursorColor": "#3B82F6"
+      },
+      "notifications": {
+        "chatMessages": true,
+        "userJoinLeave": true,
+        "codeChanges": true,
+        "systemAnnouncements": true
+      }
+    },
+    "activityStats": {
+      "totalRoomsJoined": 5,
+      "totalMessagesSent": 23,
+      "totalTimeSpent": 180,
+      "lastRoomJoined": "2024-01-15T10:30:00.000Z"
+    }
+  },
+  {
+    "userId": "user-bob-designer",
+    "username": "Bob Designer",
+    "preferences": {
+      "accessibility": {
+        "screenReader": false,
+        "highContrast": true,
+        "fontSize": "large",
+        "announceChanges": true,
+        "keyboardNavigation": true
+      },
+      "appearance": {
+        "theme": "dark",
+        "cursorColor": "#10B981"
+      },
+      "notifications": {
+        "chatMessages": true,
+        "userJoinLeave": true,
+        "codeChanges": false,
+        "systemAnnouncements": true
+      }
+    },
+    "activityStats": {
+      "totalRoomsJoined": 3,
+      "totalMessagesSent": 15,
+      "totalTimeSpent": 120,
+      "lastRoomJoined": "2024-01-15T14:20:00.000Z"
+    }
+  },
+  {
+    "userId": "user-charlie-ux",
+    "username": "Charlie UX",
+    "preferences": {
+      "accessibility": {
+        "screenReader": true,
+        "highContrast": false,
+        "fontSize": "medium",
+        "announceChanges": true,
+        "keyboardNavigation": true
+      },
+      "appearance": {
+        "theme": "auto",
+        "cursorColor": "#F59E0B"
+      },
+      "notifications": {
+        "chatMessages": true,
+        "userJoinLeave": true,
+        "codeChanges": false,
+        "systemAnnouncements": true
+      }
+    },
+    "activityStats": {
+      "totalRoomsJoined": 7,
+      "totalMessagesSent": 31,
+      "totalTimeSpent": 240,
+      "lastRoomJoined": "2024-01-15T16:45:00.000Z"
+    }
+  },
+  {
+    "userId": "user-diana-pm",
+    "username": "Diana PM",
+    "preferences": {
+      "accessibility": {
+        "screenReader": false,
+        "highContrast": false,
+        "fontSize": "small",
+        "announceChanges": true,
+        "keyboardNavigation": true
+      },
+      "appearance": {
+        "theme": "light",
+        "cursorColor": "#8B5CF6"
+      },
+      "notifications": {
+        "chatMessages": true,
+        "userJoinLeave": true,
+        "codeChanges": true,
+        "systemAnnouncements": true
+      }
+    },
+    "activityStats": {
+      "totalRoomsJoined": 4,
+      "totalMessagesSent": 18,
+      "totalTimeSpent": 150,
+      "lastRoomJoined": "2024-01-15T09:15:00.000Z"
+    }
+  },
+  {
+    "userId": "user-eve-tester",
+    "username": "Eve Tester",
+    "preferences": {
+      "accessibility": {
+        "screenReader": false,
+        "highContrast": false,
+        "fontSize": "medium",
+        "announceChanges": false,
+        "keyboardNavigation": true
+      },
+      "appearance": {
+        "theme": "dark",
+        "cursorColor": "#EF4444"
+      },
+      "notifications": {
+        "chatMessages": true,
+        "userJoinLeave": false,
+        "codeChanges": true,
+        "systemAnnouncements": false
+      }
+    },
+    "activityStats": {
+      "totalRoomsJoined": 2,
+      "totalMessagesSent": 8,
+      "totalTimeSpent": 90,
+      "lastRoomJoined": "2024-01-15T11:30:00.000Z"
+    }
+  }
+]

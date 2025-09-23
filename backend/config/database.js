@@ -8,16 +8,29 @@
 const mongoose = require('mongoose');
 
 /**
- * Connect to MongoDB Atlas using the connection string from environment variables
+ * Connect to MongoDB using the connection string from environment variables
+ * Supports both local MongoDB and MongoDB Atlas
  * Includes retry logic and connection monitoring for production reliability
  */
 const connectDB = async () => {
   try {
+    // Check if already connected
+    if (mongoose.connection.readyState === 1) {
+      console.log('📡 MongoDB already connected');
+      return;
+    }
+
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       maxPoolSize: 10, // Maintain up to 10 socket connections
-      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
+      minPoolSize: 2, // Maintain minimum 2 connections
+      serverSelectionTimeoutMS: 10000, // Keep trying to send operations for 10 seconds
       socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
       bufferCommands: false, // Disable mongoose buffering
+      connectTimeoutMS: 10000, // Give up initial connection after 10 seconds
+      heartbeatFrequencyMS: 10000, // Send a ping every 10 seconds
+      maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+      retryWrites: true, // Retry write operations on failure
+      retryReads: true, // Retry read operations on failure
     });
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
@@ -33,7 +46,26 @@ const connectDB = async () => {
 
     mongoose.connection.on('disconnected', () => {
       console.log('🔌 Mongoose disconnected from MongoDB');
+      // Attempt to reconnect after a delay
+      setTimeout(() => {
+        if (mongoose.connection.readyState === 0) {
+          console.log('🔄 Attempting to reconnect to MongoDB...');
+          connectDB();
+        }
+      }, 5000);
     });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('✅ MongoDB reconnected successfully');
+    });
+
+    // Monitor connection health
+    setInterval(() => {
+      if (mongoose.connection.readyState !== 1) {
+        console.log('⚠️ Database connection unhealthy, attempting reconnection...');
+        connectDB();
+      }
+    }, 30000); // Check every 30 seconds
 
     // Handle application termination
     process.on('SIGINT', async () => {

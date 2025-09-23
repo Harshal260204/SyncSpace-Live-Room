@@ -1,0 +1,146 @@
+[
+  {
+    "roomId": "room-dev-sprint",
+    "roomName": "Development Sprint Planning",
+    "description": "Weekly sprint planning session for the development team. Focus on backlog refinement and sprint goals.",
+    "createdBy": {
+      "userId": "user-alice-dev",
+      "username": "Alice Developer"
+    },
+    "maxParticipants": 10,
+    "settings": {
+      "allowAnonymous": true,
+      "allowCodeEditing": true,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": true,
+      "allowChat": true,
+      "isPublic": true
+    }
+  },
+  {
+    "roomId": "room-design-review",
+    "roomName": "Design Review Session",
+    "description": "Collaborative design review for the new user interface. Bring your ideas and feedback!",
+    "createdBy": {
+      "userId": "user-bob-designer",
+      "username": "Bob Designer"
+    },
+    "maxParticipants": 15,
+    "settings": {
+      "allowAnonymous": true,
+      "allowCodeEditing": false,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": true,
+      "allowChat": true,
+      "isPublic": true
+    }
+  },
+  {
+    "roomId": "room-ux-research",
+    "roomName": "UX Research Workshop",
+    "description": "User experience research session. Analyzing user feedback and planning improvements.",
+    "createdBy": {
+      "userId": "user-charlie-ux",
+      "username": "Charlie UX"
+    },
+    "maxParticipants": 8,
+    "settings": {
+      "allowAnonymous": false,
+      "allowCodeEditing": false,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": true,
+      "allowChat": true,
+      "isPublic": false
+    }
+  },
+  {
+    "roomId": "room-product-meeting",
+    "roomName": "Product Strategy Meeting",
+    "description": "Quarterly product strategy discussion. Roadmap planning and feature prioritization.",
+    "createdBy": {
+      "userId": "user-diana-pm",
+      "username": "Diana PM"
+    },
+    "maxParticipants": 12,
+    "settings": {
+      "allowAnonymous": false,
+      "allowCodeEditing": false,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": false,
+      "allowChat": true,
+      "isPublic": false
+    }
+  },
+  {
+    "roomId": "room-qa-testing",
+    "roomName": "QA Testing Session",
+    "description": "Quality assurance testing session. Bug tracking and test case review.",
+    "createdBy": {
+      "userId": "user-eve-tester",
+      "username": "Eve Tester"
+    },
+    "maxParticipants": 6,
+    "settings": {
+      "allowAnonymous": true,
+      "allowCodeEditing": true,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": false,
+      "allowChat": true,
+      "isPublic": true
+    }
+  },
+  {
+    "roomId": "room-code-review",
+    "roomName": "Code Review Session",
+    "description": "Collaborative code review for the latest features. Focus on code quality and best practices.",
+    "createdBy": {
+      "userId": "user-alice-dev",
+      "username": "Alice Developer"
+    },
+    "maxParticipants": 8,
+    "settings": {
+      "allowAnonymous": false,
+      "allowCodeEditing": true,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": false,
+      "allowChat": true,
+      "isPublic": false
+    }
+  },
+  {
+    "roomId": "room-brainstorming",
+    "roomName": "Creative Brainstorming",
+    "description": "Open brainstorming session for new ideas and creative solutions. All ideas welcome!",
+    "createdBy": {
+      "userId": "user-charlie-ux",
+      "username": "Charlie UX"
+    },
+    "maxParticipants": 20,
+    "settings": {
+      "allowAnonymous": true,
+      "allowCodeEditing": false,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": true,
+      "allowChat": true,
+      "isPublic": true
+    }
+  },
+  {
+    "roomId": "room-onboarding",
+    "roomName": "New Team Member Onboarding",
+    "description": "Welcome session for new team members. Introduction to tools, processes, and team culture.",
+    "createdBy": {
+      "userId": "user-diana-pm",
+      "username": "Diana PM"
+    },
+    "maxParticipants": 25,
+    "settings": {
+      "allowAnonymous": true,
+      "allowCodeEditing": false,
+      "allowNotesEditing": true,
+      "allowCanvasDrawing": false,
+      "allowChat": true,
+      "isPublic": true
+    }
+  }
+]

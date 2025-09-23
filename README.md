@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![React Version](https://img.shields.io/badge/react-%5E18.0.0-blue)](https://reactjs.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)](https://www.mongodb.com/atlas)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Local-green)](https://www.mongodb.com/compass)
 [![Accessibility](https://img.shields.io/badge/Accessibility-WCAG%202.1%20AA-purple)](https://www.w3.org/WAI/WCAG21/quickref/)
 [![Blind Mode](https://img.shields.io/badge/Blind%20Mode-Enhanced-orange)](https://github.com/yourusername/SyncSpace-Live-Room)
 [![Deployment](https://img.shields.io/badge/Deployment-Ready-brightgreen)](https://render.com)
@@ -66,6 +66,183 @@ SyncSpace Live Room is a **fully free, open-source, accessible, collaborative re
 - **Teams** - Remote collaboration and brainstorming with universal access
 - **Educators** - Interactive teaching and learning environments for diverse learners
 - **Accessibility Advocates** - Organizations promoting inclusive technology
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** (v18.0.0 or higher)
+- **MongoDB** (local installation or MongoDB Atlas)
+- **Git** (for cloning the repository)
+
+### 📋 Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/SyncSpace-Live-Room.git
+   cd SyncSpace-Live-Room
+   ```
+
+2. **Install backend dependencies**
+   ```bash
+   cd backend
+   npm install
+   ```
+
+3. **Install frontend dependencies**
+   ```bash
+   cd ../frontend
+   npm install
+   ```
+
+4. **Set up environment variables**
+   
+   Create `backend/.env`:
+   ```env
+   PORT=5000
+   MONGODB_URI=mongodb://localhost:27017/syncspace-liveroom
+   JWT_SECRET=your-super-secret-jwt-key-here
+   NODE_ENV=development
+   ```
+
+   Create `frontend/.env`:
+   ```env
+   REACT_APP_SERVER_URL=http://localhost:5000
+   GENERATE_SOURCEMAP=false
+   ```
+
+## 🏃‍♂️ Running the Application
+
+### Single User Development
+
+1. **Start MongoDB** (if running locally)
+   ```bash
+   # On Windows
+   mongod
+   
+   # On macOS/Linux
+   sudo systemctl start mongod
+   ```
+
+2. **Start the backend server**
+   ```bash
+   cd backend
+   npm run dev
+   ```
+   The backend will be available at `http://localhost:5000`
+
+3. **Start the frontend development server**
+   ```bash
+   cd frontend
+   npm start
+   ```
+   The frontend will be available at `http://localhost:3000`
+
+4. **Open your browser** and navigate to `http://localhost:3000`
+
+### Multiple Users Testing
+
+To test real-time collaboration with multiple users:
+
+#### Method 1: Multiple Browser Windows/Tabs
+1. **Start the application** (follow single user steps above)
+2. **Open multiple browser windows/tabs** to `http://localhost:3000`
+3. **Create a room** in one window
+4. **Join the same room** in other windows
+5. **Test real-time collaboration** across all windows
+
+#### Method 2: Different Devices/Networks
+1. **Start the application** on your main machine
+2. **Find your local IP address**:
+   ```bash
+   # Windows
+   ipconfig
+   
+   # macOS/Linux
+   ifconfig
+   ```
+3. **Update frontend environment**:
+   ```env
+   REACT_APP_SERVER_URL=http://YOUR_IP_ADDRESS:5000
+   ```
+4. **Access from other devices** using `http://YOUR_IP_ADDRESS:3000`
+
+#### Method 3: Production-like Testing
+1. **Deploy backend to Render** (see deployment section)
+2. **Deploy frontend to Vercel/Netlify** (see deployment section)
+3. **Share the production URL** with multiple users
+4. **Test real-time collaboration** across different locations
+
+## 🎮 How to Use the Application
+
+### Getting Started
+
+1. **Open the application** in your browser
+2. **Create a new room** or **join an existing room**
+3. **Enter your username** (anonymous guest login supported)
+4. **Start collaborating** in real-time!
+
+### Core Features
+
+#### 🔧 Code Editor
+- **Monaco Editor** with syntax highlighting
+- **Real-time collaboration** with live cursors
+- **Language detection** and auto-completion
+- **Keyboard shortcuts** for productivity
+- **Screen reader support** for accessibility
+
+#### 📝 Notes Editor
+- **Rich text editing** with formatting options
+- **Real-time synchronization** across users
+- **Conflict resolution** for concurrent edits
+- **Accessible interface** with ARIA labels
+
+#### 🎨 Canvas Drawing
+- **Fabric.js integration** for smooth drawing
+- **Multiple drawing tools** (pen, brush, shapes)
+- **Real-time collaboration** with user cursors
+- **Voice commands** for hands-free operation
+- **Blind Mode support** with detailed descriptions
+
+#### 💬 Live Chat
+- **Real-time messaging** with typing indicators
+- **Accessible notifications** for new messages
+- **User presence** and activity indicators
+- **Screen reader announcements**
+
+### Accessibility Features
+
+#### ♿ Screen Reader Support
+- **Live announcements** for all actions
+- **ARIA labels** and roles throughout
+- **Keyboard navigation** for all features
+- **Focus management** and visual indicators
+
+#### 👁️‍🗨️ Blind Mode
+- **Enhanced descriptions** for all interactions
+- **Keyboard shortcuts** (Ctrl+B to toggle)
+- **Action logging** for canvas and other features
+- **Detailed announcements** for screen readers
+
+#### ⌨️ Keyboard Navigation
+- **Full keyboard support** for all features
+- **Tab navigation** with visual indicators
+- **Keyboard shortcuts** for common actions
+- **Focus management** and accessibility
+
+### Theme and Customization
+
+#### 🌙 Theme Options
+- **Light theme** for daytime use
+- **Dark theme** for low-light environments
+- **High contrast mode** for better visibility
+- **Font size adjustment** for readability
+
+#### 🎨 Visual Customization
+- **Glassmorphism effects** (optional)
+- **Animation preferences** (respects reduced motion)
+- **Color scheme** adaptation
+- **Responsive design** for all devices
 
 ## 🏗️ Architecture
 
@@ -204,8 +381,8 @@ nano .env
 
 **Required Environment Variables:**
 ```bash
-# MongoDB Configuration
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority&appName=SyncSpace
+# MongoDB Configuration - Local Database
+MONGODB_URI=mongodb://localhost:27017/syncspace-liveroom
 
 # Server Configuration
 PORT=5000
@@ -275,37 +452,82 @@ npm start
 npm start
 ```
 
-### 6. MongoDB Atlas Setup
+### 6. Local MongoDB Setup
 
-#### Create MongoDB Atlas Account
-1. Go to [MongoDB Atlas](https://www.mongodb.com/atlas)
-2. Create a free account
-3. Create a new cluster (choose the free M0 tier)
-4. Create a database user with read/write permissions
-5. Whitelist your IP address (or use 0.0.0.0/0 for development)
-
-#### Get Connection String
-1. Click "Connect" on your cluster
-2. Choose "Connect your application"
-3. Copy the connection string
-4. Replace `<password>` with your database user password
-5. Replace `<dbname>` with your database name (e.g., `liveroom`)
-
-#### Update Environment Variables
+#### Quick Setup (Recommended)
 ```bash
-# In backend/.env file
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/liveroom?retryWrites=true&w=majority&appName=SyncSpace
+# Run the automated setup script
+node setup-local-mongodb.js
 ```
 
-### 7. Access the Application
+This script will:
+- ✅ Check MongoDB connection
+- ✅ Verify environment configuration
+- ✅ Test database operations
+- ✅ Optionally seed sample data
+
+#### Manual Setup
+
+##### Install MongoDB Community Edition
+1. Download MongoDB Community Server from [MongoDB Download Center](https://www.mongodb.com/try/download/community)
+2. Install MongoDB with default settings
+3. Start MongoDB service (usually starts automatically on Windows)
+
+##### Install MongoDB Compass (Optional but Recommended)
+1. Download MongoDB Compass from [MongoDB Compass](https://www.mongodb.com/products/compass)
+2. Install and connect to `mongodb://localhost:27017`
+3. Create database `syncspace-liveroom` for the application
+
+##### Verify MongoDB is Running
+```bash
+# Check if MongoDB is running
+mongosh --eval "db.runCommand('ping')"
+
+# Or test connection with Node.js
+node -e "require('mongoose').connect('mongodb://localhost:27017/syncspace-liveroom').then(() => console.log('✅ Connected to local MongoDB')).catch(console.error)"
+```
+
+📖 **Detailed Guide**: See [MongoDB Compass Setup Guide](docs/mongodb-compass-setup.md) for comprehensive database management instructions.
+
+### 7. Seed Sample Data (Optional)
+```bash
+# Navigate to backend directory
+cd backend
+
+# Seed database with sample data for testing
+npm run seed
+
+# Or reset and re-seed (clears existing data)
+npm run seed:reset-reseed
+
+# Auto-seed in development (only if database is empty)
+npm run seed:dev
+```
+
+**Available Seeding Commands:**
+- `npm run seed` - Add sample data (idempotent)
+- `npm run seed:reset` - Clear all data
+- `npm run seed:reset-reseed` - Clear and re-seed
+- `npm run seed:dev` - Auto-seed if empty (development only)
+
+**Sample Data Includes:**
+- 5 diverse users with accessibility preferences
+- 8 collaborative rooms with different purposes
+- Sample chat messages, code content, and notes
+- Realistic activity statistics and settings
+
+📖 **Detailed Guide**: See [Database Seeding Guide](docs/database-seeding.md) for comprehensive documentation.
+
+### 8. Access the Application
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:5000
 - **Health Check**: http://localhost:5000/health
 
-### 8. Verify Installation
+### 9. Verify Installation
 1. **Backend Health Check**: Visit http://localhost:5000/health
 2. **Frontend Load**: Visit http://localhost:3000
 3. **Database Connection**: Check backend console for MongoDB connection success
+4. **Sample Data**: If seeded, you should see sample users and rooms in the application
 4. **Socket Connection**: Check browser console for Socket.io connection
 
 ## 📚 Project Architecture
@@ -907,7 +1129,7 @@ npx playwright test
 ### Prerequisites
 - Node.js 18+
 - npm 9+
-- MongoDB Atlas account
+- MongoDB Community Edition (local installation)
 - Git
 
 ### Development Workflow
@@ -955,6 +1177,214 @@ npx playwright test
 
 For detailed contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 🛠️ Development
+
+### Project Structure
+
+```
+SyncSpace-Live-Room/
+├── backend/                 # Node.js/Express backend
+│   ├── config/             # Database configuration
+│   ├── middleware/         # Custom middleware
+│   ├── models/            # MongoDB models
+│   ├── routes/            # API routes
+│   ├── socket/            # Socket.io handlers
+│   ├── scripts/           # Utility scripts
+│   ├── seed/              # Database seeding
+│   ├── utils/             # Utility functions
+│   └── server.js          # Main server file
+├── frontend/               # React frontend
+│   ├── public/            # Static assets
+│   ├── src/
+│   │   ├── components/    # React components
+│   │   ├── contexts/      # React contexts
+│   │   ├── pages/         # Page components
+│   │   ├── services/      # API services
+│   │   └── styles/        # CSS styles
+│   └── package.json       # Frontend dependencies
+└── README.md              # This file
+```
+
+### Available Scripts
+
+#### Backend Scripts
+```bash
+npm start          # Start production server
+npm run dev        # Start development server with nodemon
+npm run cleanup    # Clean up stale room participants
+```
+
+#### Frontend Scripts
+```bash
+npm start          # Start development server
+npm run build      # Build for production
+npm run test       # Run tests
+npm run lint       # Run ESLint
+npm run lint:fix   # Fix ESLint issues
+```
+
+### Key Technologies
+
+#### Backend
+- **Node.js** - JavaScript runtime
+- **Express.js** - Web framework
+- **Socket.io** - Real-time communication
+- **MongoDB** - Database
+- **Mongoose** - ODM for MongoDB
+- **JWT** - Authentication
+- **CORS** - Cross-origin resource sharing
+- **Helmet** - Security middleware
+
+#### Frontend
+- **React 18** - UI library
+- **React Router** - Client-side routing
+- **Socket.io Client** - Real-time communication
+- **Monaco Editor** - Code editor
+- **Fabric.js** - Canvas library
+- **TailwindCSS** - Styling
+- **React Hot Toast** - Notifications
+- **UUID** - Unique identifiers
+
+### Context Architecture
+
+The application uses React Context API for state management:
+
+- **ThemeContext** - Theme and visual preferences
+- **AccessibilityContext** - Accessibility settings and announcements
+- **BlindModeContext** - Blind Mode specific features
+- **UserContext** - User state and authentication
+- **SocketContext** - Real-time communication and collaboration
+
+## 🚀 Deployment
+
+### Backend Deployment (Render)
+
+1. **Create a Render account** at [render.com](https://render.com)
+2. **Connect your GitHub repository**
+3. **Create a new Web Service**:
+   - **Build Command**: `cd backend && npm install`
+   - **Start Command**: `cd backend && npm start`
+   - **Environment Variables**:
+     ```
+     PORT=10000
+     MONGODB_URI=your-mongodb-atlas-connection-string
+     JWT_SECRET=your-super-secret-jwt-key-here
+     NODE_ENV=production
+     ```
+
+### Frontend Deployment (Vercel/Netlify)
+
+#### Vercel Deployment
+1. **Create a Vercel account** at [vercel.com](https://vercel.com)
+2. **Import your GitHub repository**
+3. **Set environment variables**:
+   ```
+   REACT_APP_SERVER_URL=https://your-backend-url.onrender.com
+   ```
+4. **Deploy automatically**
+
+#### Netlify Deployment
+1. **Create a Netlify account** at [netlify.com](https://netlify.com)
+2. **Connect your GitHub repository**
+3. **Set build settings**:
+   - **Build Command**: `cd frontend && npm run build`
+   - **Publish Directory**: `frontend/build`
+4. **Set environment variables**:
+   ```
+   REACT_APP_SERVER_URL=https://your-backend-url.onrender.com
+   ```
+
+### Database Setup
+
+#### MongoDB Atlas (Recommended)
+1. **Create a MongoDB Atlas account** at [mongodb.com/atlas](https://mongodb.com/atlas)
+2. **Create a new cluster**
+3. **Get your connection string**
+4. **Update your environment variables**
+
+#### Local MongoDB
+1. **Install MongoDB locally**
+2. **Start MongoDB service**
+3. **Use local connection string**: `mongodb://localhost:27017/syncspace-liveroom`
+
+## 🧪 Testing
+
+### Manual Testing
+
+#### Single User Testing
+1. **Start the application** locally
+2. **Test all features** individually
+3. **Verify accessibility** with screen reader
+4. **Test keyboard navigation**
+5. **Test Blind Mode** functionality
+
+#### Multi-User Testing
+1. **Open multiple browser windows**
+2. **Create a room** in one window
+3. **Join the room** in other windows
+4. **Test real-time collaboration**:
+   - Code editing
+   - Notes editing
+   - Canvas drawing
+   - Chat messaging
+5. **Verify synchronization** across all windows
+
+### Automated Testing
+
+```bash
+# Run frontend tests
+cd frontend
+npm test
+
+# Run linting
+npm run lint
+
+# Run build test
+npm run build
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Backend Issues
+- **Port already in use**: Change PORT in .env file
+- **MongoDB connection failed**: Check MongoDB service and connection string
+- **Socket.io connection failed**: Check CORS settings and network
+
+#### Frontend Issues
+- **Build failed**: Check for syntax errors and missing dependencies
+- **Socket connection failed**: Verify backend is running and accessible
+- **Context errors**: Check context provider nesting in index.js
+
+#### Accessibility Issues
+- **Screen reader not working**: Check browser compatibility and settings
+- **Keyboard navigation broken**: Verify tabIndex and ARIA attributes
+- **Blind Mode not functioning**: Check BlindModeContext initialization
+
+### Debug Mode
+
+Enable debug logging by setting:
+```env
+NODE_ENV=development
+DEBUG=syncspace:*
+```
+
+## 🤝 Contributing
+
+### Development Setup
+1. **Fork the repository**
+2. **Create a feature branch**
+3. **Make your changes**
+4. **Test thoroughly**
+5. **Submit a pull request**
+
+### Code Standards
+- **ESLint** configuration for code quality
+- **Accessibility** first development
+- **Comprehensive testing** for all features
+- **Documentation** for all changes
+
 ## 📄 License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
@@ -983,10 +1413,10 @@ node -e "require('mongoose').connect(process.env.MONGODB_URI).then(() => console
 ```
 
 **Solutions**:
-- Verify MongoDB Atlas cluster is running
-- Check IP whitelist includes your IP (or 0.0.0.0/0 for development)
-- Ensure database user has read/write permissions
-- Verify connection string format
+- Verify MongoDB service is running locally
+- Check if MongoDB is installed and started
+- Ensure connection string points to localhost:27017
+- Verify database name is correct
 
 #### 2. Frontend Build Issues
 **Problem**: React app won't start or build fails
@@ -1101,21 +1531,24 @@ npx serve -s build
 
 #### Database Debugging
 ```bash
-# Connect to MongoDB Atlas
-mongosh "mongodb+srv://username:password@cluster.mongodb.net/liveroom"
+# Connect to local MongoDB
+mongosh "mongodb://localhost:27017/syncspace"
 
 # Check collections
 show collections
 
 # Check room data
 db.rooms.find()
+
+# Check user data
+db.users.find()
 ```
 
 ### Performance Issues
 
 #### Slow Loading
-- Check MongoDB Atlas cluster performance
-- Verify network connection
+- Check local MongoDB performance
+- Verify database indexes are created
 - Clear browser cache
 - Check for memory leaks in browser dev tools
 
@@ -1210,6 +1643,13 @@ df -h  # Linux/Mac
 - 🔄 Advanced collaboration features
 - 🔄 Enterprise features
 - 🔄 Mobile app
+
+## 📞 Support
+
+- **GitHub Issues** for bug reports and feature requests
+- **Documentation** in the `/docs` folder
+- **Community discussions** in GitHub Discussions
+- **Email support** for urgent issues
 
 ## 🙏 Acknowledgments
 

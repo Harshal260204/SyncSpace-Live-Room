@@ -136,8 +136,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-userSchema.index({ userId: 1 });
-userSchema.index({ sessionId: 1 });
 userSchema.index({ isActive: 1, lastSeen: -1 });
 userSchema.index({ currentRoom: 1 });
 
@@ -148,21 +146,84 @@ userSchema.pre('save', function(next) {
 });
 
 // Instance methods for user management
-userSchema.methods.updateActivity = function() {
-  this.lastSeen = new Date();
-  return this.save();
+userSchema.methods.updateActivity = async function() {
+  try {
+    // Use atomic operation to prevent race conditions
+    const result = await this.constructor.findByIdAndUpdate(
+      this._id,
+      {
+        $set: {
+          lastSeen: new Date()
+        }
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (result) {
+      this.lastSeen = result.lastSeen;
+    }
+    
+    return this;
+  } catch (error) {
+    console.error('❌ Error updating activity:', error);
+    throw error;
+  }
 };
 
-userSchema.methods.joinRoom = function(roomId) {
-  this.currentRoom = roomId;
-  this.activityStats.totalRoomsJoined += 1;
-  this.activityStats.lastRoomJoined = new Date();
-  return this.save();
+userSchema.methods.joinRoom = async function(roomId) {
+  try {
+    // Use atomic operation to prevent race conditions
+    const result = await this.constructor.findByIdAndUpdate(
+      this._id,
+      {
+        $set: {
+          currentRoom: roomId,
+          lastSeen: new Date()
+        },
+        $inc: {
+          'activityStats.totalRoomsJoined': 1
+        },
+        $currentDate: {
+          'activityStats.lastRoomJoined': true
+        }
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (result) {
+      Object.assign(this, result);
+    }
+    
+    return this;
+  } catch (error) {
+    console.error('❌ Error joining room:', error);
+    throw error;
+  }
 };
 
-userSchema.methods.leaveRoom = function() {
-  this.currentRoom = null;
-  return this.save();
+userSchema.methods.leaveRoom = async function() {
+  try {
+    // Use atomic operation to prevent race conditions
+    const result = await this.constructor.findByIdAndUpdate(
+      this._id,
+      {
+        $set: {
+          currentRoom: null,
+          lastSeen: new Date()
+        }
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (result) {
+      Object.assign(this, result);
+    }
+    
+    return this;
+  } catch (error) {
+    console.error('❌ Error leaving room:', error);
+    throw error;
+  }
 };
 
 userSchema.methods.updatePreferences = function(newPreferences) {

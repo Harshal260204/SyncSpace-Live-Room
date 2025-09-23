@@ -263,49 +263,185 @@ const roomSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-roomSchema.index({ roomId: 1 });
 roomSchema.index({ isActive: 1, lastActivity: -1 });
 roomSchema.index({ 'participants.userId': 1 });
 roomSchema.index({ createdAt: -1 });
 
-// Pre-save middleware to update lastActivity
+// Pre-save middleware to update lastActivity and maintain data integrity
 roomSchema.pre('save', function(next) {
-  this.lastActivity = new Date();
-  this.currentParticipants = this.participants.filter(p => p.isActive).length;
-  next();
+  try {
+    this.lastActivity = new Date();
+    
+    // Ensure participants array exists and is valid
+    if (!Array.isArray(this.participants)) {
+      this.participants = [];
+    }
+    
+    // Clean up inactive participants (older than 1 hour) to prevent array bloat
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    this.participants = this.participants.filter(p => {
+      // Ensure participant has required fields
+      if (!p || !p.userId || !p.username) {
+        return false;
+      }
+      return p.isActive || (p.lastActivity && p.lastActivity > oneHourAgo);
+    });
+    
+    // Recalculate current participants with validation
+    this.currentParticipants = this.participants.filter(p => p.isActive === true).length;
+    
+    // Ensure currentParticipants is not negative
+    if (this.currentParticipants < 0) {
+      this.currentParticipants = 0;
+    }
+    
+    // Ensure maxParticipants is within valid range
+    if (this.maxParticipants < 2) {
+      this.maxParticipants = 2;
+    } else if (this.maxParticipants > 100) {
+      this.maxParticipants = 100;
+    }
+    
+    console.log(`🧹 Room ${this.roomId} cleanup: ${this.participants.length} total, ${this.currentParticipants} active`);
+    
+    next();
+  } catch (error) {
+    console.error('❌ Error in pre-save middleware:', error);
+    next(error);
+  }
 });
 
 // Instance methods for room management
-roomSchema.methods.addParticipant = function(userData) {
-  const existingParticipant = this.participants.find(p => p.userId === userData.userId);
+roomSchema.methods.addParticipant = async function(userData) {
+  const maxRetries = 3;
   
-  if (existingParticipant) {
-    // Update existing participant
-    existingParticipant.socketId = userData.socketId;
-    existingParticipant.isActive = true;
-    existingParticipant.lastActivity = new Date();
-    existingParticipant.accessibility = { ...existingParticipant.accessibility, ...userData.accessibility };
-  } else {
-    // Add new participant
-    this.participants.push({
-      ...userData,
-      lastActivity: new Date(),
-      isActive: true,
-    });
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // First, try to update existing participant
+      const updateResult = await this.constructor.findOneAndUpdate(
+        { 
+          _id: this._id,
+          'participants.userId': userData.userId 
+        },
+        {
+          $set: {
+            'participants.$.socketId': userData.socketId,
+            'participants.$.isActive': true,
+            'participants.$.lastActivity': new Date(),
+            'participants.$.accessibility': userData.accessibility || {},
+            'participants.$.color': userData.color || '#3B82F6'
+          }
+        },
+        { new: true, runValidators: true }
+      );
+
+      // If no existing participant was found, add new one
+      if (!updateResult) {
+        await this.constructor.findByIdAndUpdate(
+          this._id,
+          {
+            $push: {
+              participants: {
+                ...userData,
+                lastActivity: new Date(),
+                isActive: true,
+              }
+            }
+          },
+          { new: true, runValidators: true }
+        );
+      }
+
+      // Clean up inactive participants and update count atomically
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      await this.constructor.findByIdAndUpdate(
+        this._id,
+        {
+          $pull: {
+            participants: {
+              isActive: false,
+              lastActivity: { $lt: oneHourAgo }
+            }
+          }
+        }
+      );
+
+      // Update participant count
+      const updatedRoom = await this.constructor.findById(this._id);
+      if (updatedRoom) {
+        updatedRoom.currentParticipants = updatedRoom.participants.filter(p => p.isActive).length;
+        await updatedRoom.save();
+        return updatedRoom;
+      }
+      
+      return this;
+      
+    } catch (error) {
+      console.error(`❌ addParticipant attempt ${attempt}/${maxRetries} failed:`, error.message);
+      
+      if (error.name === 'VersionError' && attempt < maxRetries) {
+        // Refresh the document and retry
+        const freshRoom = await this.constructor.findById(this._id);
+        if (freshRoom) {
+          Object.assign(this, freshRoom);
+          continue;
+        }
+      }
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Wait before retry with exponential backoff
+      await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt - 1)));
+    }
   }
-  
-  this.currentParticipants = this.participants.filter(p => p.isActive).length;
-  return this.save();
 };
 
-roomSchema.methods.removeParticipant = function(userId) {
-  const participant = this.participants.find(p => p.userId === userId);
-  if (participant) {
-    participant.isActive = false;
-    participant.lastActivity = new Date();
-    this.currentParticipants = this.participants.filter(p => p.isActive).length;
+roomSchema.methods.removeParticipant = async function(userId) {
+  try {
+    // Use atomic operation to mark participant as inactive
+    await this.constructor.findOneAndUpdate(
+      { 
+        _id: this._id,
+        'participants.userId': userId 
+      },
+      {
+        $set: {
+          'participants.$.isActive': false,
+          'participants.$.lastActivity': new Date()
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    // Clean up inactive participants and update count atomically
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await this.constructor.findByIdAndUpdate(
+      this._id,
+      {
+        $pull: {
+          participants: {
+            isActive: false,
+            lastActivity: { $lt: oneHourAgo }
+          }
+        }
+      }
+    );
+
+    // Update participant count
+    const updatedRoom = await this.constructor.findById(this._id);
+    if (updatedRoom) {
+      updatedRoom.currentParticipants = updatedRoom.participants.filter(p => p.isActive).length;
+      await updatedRoom.save();
+      return updatedRoom;
+    }
+
+    return this;
+  } catch (error) {
+    console.error('❌ Error removing participant:', error);
+    throw error;
   }
-  return this.save();
 };
 
 roomSchema.methods.addChatMessage = function(messageData) {
@@ -323,6 +459,17 @@ roomSchema.methods.addChatMessage = function(messageData) {
 };
 
 roomSchema.methods.updateCodeContent = function(codeData) {
+  // Initialize codeCollaboration if it doesn't exist
+  if (!this.codeCollaboration) {
+    this.codeCollaboration = {
+      content: '',
+      language: 'javascript',
+      lastModified: new Date(),
+      lastModifiedBy: { userId: '', username: '' },
+      version: 0
+    };
+  }
+  
   this.codeCollaboration.content = codeData.content;
   this.codeCollaboration.language = codeData.language || this.codeCollaboration.language;
   this.codeCollaboration.lastModified = new Date();
@@ -335,6 +482,16 @@ roomSchema.methods.updateCodeContent = function(codeData) {
 };
 
 roomSchema.methods.updateNotesContent = function(notesData) {
+  // Initialize notesCollaboration if it doesn't exist
+  if (!this.notesCollaboration) {
+    this.notesCollaboration = {
+      content: '',
+      lastModified: new Date(),
+      lastModifiedBy: { userId: '', username: '' },
+      version: 0
+    };
+  }
+  
   this.notesCollaboration.content = notesData.content;
   this.notesCollaboration.lastModified = new Date();
   this.notesCollaboration.lastModifiedBy = {
@@ -346,6 +503,16 @@ roomSchema.methods.updateNotesContent = function(notesData) {
 };
 
 roomSchema.methods.updateCanvasDrawing = function(drawingData) {
+  // Initialize canvasDrawing if it doesn't exist
+  if (!this.canvasDrawing) {
+    this.canvasDrawing = {
+      drawingData: '',
+      lastModified: new Date(),
+      lastModifiedBy: { userId: '', username: '' },
+      version: 0
+    };
+  }
+  
   this.canvasDrawing.drawingData = drawingData.drawingData;
   this.canvasDrawing.lastModified = new Date();
   this.canvasDrawing.lastModifiedBy = {
