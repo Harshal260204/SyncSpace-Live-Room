@@ -24,6 +24,7 @@ import CanvasDrawing from '../components/Workspace/CanvasDrawing';
 import ChatPanel from '../components/Workspace/ChatPanel';
 import ParticipantsList from '../components/Workspace/ParticipantsList';
 import CollaborationCursors from '../components/Workspace/CollaborationCursors';
+import RoomInfo from '../components/Workspace/RoomInfo';
 import LoadingSpinner from '../components/UI/LoadingSpinner';
 import ErrorBoundary from '../components/UI/ErrorBoundary';
 
@@ -61,6 +62,7 @@ const RoomWorkspace = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showParticipants, setShowParticipants] = useState(true);
   const [showChat, setShowChat] = useState(true);
+  const [showRoomInfo, setShowRoomInfo] = useState(false);
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
 
   // Refs for collaboration with proper cleanup
@@ -380,6 +382,16 @@ const RoomWorkspace = () => {
                   >
                     💬
                   </button>
+
+                  {/* Room info toggle */}
+                  <button
+                    onClick={() => setShowRoomInfo(!showRoomInfo)}
+                    className={`btn ${showRoomInfo ? 'btn-primary' : 'btn-outline'}`}
+                    aria-label={showRoomInfo ? 'Hide room info' : 'Show room info'}
+                    title="Room sharing and information"
+                  >
+                    ℹ️
+                  </button>
                 </div>
               </div>
             </div>
@@ -387,10 +399,26 @@ const RoomWorkspace = () => {
 
           {/* Main workspace */}
           <div className="flex h-[calc(100vh-4rem)]">
-            {/* Left sidebar - Participants */}
-            {showParticipants && (
-              <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
-                <ParticipantsList participants={participants} />
+            {/* Left sidebar - Participants and Room Info */}
+            {(showParticipants || showRoomInfo) && (
+              <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+                {/* Room Info */}
+                {showRoomInfo && (
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <RoomInfo 
+                      roomId={roomId} 
+                      roomData={roomData} 
+                      isCreator={true} // You can determine this based on your logic
+                    />
+                  </div>
+                )}
+                
+                {/* Participants */}
+                {showParticipants && (
+                  <div className="flex-1 overflow-y-auto">
+                    <ParticipantsList participants={participants} />
+                  </div>
+                )}
               </div>
             )}
 
