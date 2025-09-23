@@ -33,6 +33,31 @@ const themeReducer = (state, action) => {
         ...state,
         highContrast: !state.highContrast,
       };
+    case 'SET_GLASSMORPHISM':
+      return {
+        ...state,
+        glassmorphism: action.payload,
+      };
+    case 'TOGGLE_GLASSMORPHISM':
+      return {
+        ...state,
+        glassmorphism: !state.glassmorphism,
+      };
+    case 'SET_ANIMATIONS':
+      return {
+        ...state,
+        animations: action.payload,
+      };
+    case 'TOGGLE_ANIMATIONS':
+      return {
+        ...state,
+        animations: !state.animations,
+      };
+    case 'SET_REDUCED_MOTION':
+      return {
+        ...state,
+        reducedMotion: action.payload,
+      };
     case 'SET_SYSTEM_THEME':
       return {
         ...state,
@@ -53,6 +78,9 @@ const initialState = {
   theme: 'light', // 'light', 'dark', 'auto'
   highContrast: false,
   systemTheme: 'light', // Detected system theme
+  glassmorphism: true, // Enable glassmorphism effects
+  animations: true, // Enable animations
+  reducedMotion: false, // System reduced motion preference
   initialized: false,
 };
 
@@ -72,6 +100,8 @@ export const ThemeProvider = ({ children }) => {
         // Get saved theme preferences
         const savedTheme = localStorage.getItem('liveroom-theme');
         const savedHighContrast = localStorage.getItem('liveroom-high-contrast');
+        const savedGlassmorphism = localStorage.getItem('liveroom-glassmorphism');
+        const savedAnimations = localStorage.getItem('liveroom-animations');
         
         // Detect system theme preference
         const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches 
@@ -81,17 +111,29 @@ export const ThemeProvider = ({ children }) => {
         // Detect system high contrast preference
         const systemHighContrast = window.matchMedia('(prefers-contrast: high)').matches;
         
+        // Detect system reduced motion preference
+        const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        
         // Initialize theme state
         const theme = savedTheme || 'auto';
         const highContrast = savedHighContrast 
           ? JSON.parse(savedHighContrast) 
           : systemHighContrast;
+        const glassmorphism = savedGlassmorphism 
+          ? JSON.parse(savedGlassmorphism) 
+          : true;
+        const animations = savedAnimations 
+          ? JSON.parse(savedAnimations) 
+          : !systemReducedMotion;
         
         dispatch({
           type: 'INITIALIZE_THEME',
           payload: {
             theme,
             highContrast,
+            glassmorphism,
+            animations,
+            reducedMotion: systemReducedMotion,
             systemTheme,
             initialized: true,
           },
@@ -104,6 +146,9 @@ export const ThemeProvider = ({ children }) => {
           payload: {
             theme: 'auto',
             highContrast: false,
+            glassmorphism: true,
+            animations: true,
+            reducedMotion: false,
             systemTheme: 'light',
             initialized: true,
           },
@@ -153,23 +198,54 @@ export const ThemeProvider = ({ children }) => {
     };
   }, [state.theme]);
 
+  // Listen for system reduced motion changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    
+    const handleReducedMotionChange = (e) => {
+      dispatch({
+        type: 'SET_REDUCED_MOTION',
+        payload: e.matches,
+      });
+      
+      // Auto-disable animations if reduced motion is preferred
+      if (e.matches) {
+        dispatch({
+          type: 'SET_ANIMATIONS',
+          payload: false,
+        });
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleReducedMotionChange);
+    
+    return () => {
+      mediaQuery.removeEventListener('change', handleReducedMotionChange);
+    };
+  }, []);
+
   // Save theme preferences to localStorage
   useEffect(() => {
     if (state.initialized) {
       try {
         localStorage.setItem('liveroom-theme', state.theme);
         localStorage.setItem('liveroom-high-contrast', JSON.stringify(state.highContrast));
+        localStorage.setItem('liveroom-glassmorphism', JSON.stringify(state.glassmorphism));
+        localStorage.setItem('liveroom-animations', JSON.stringify(state.animations));
       } catch (error) {
         console.error('Error saving theme preferences:', error);
       }
     }
-  }, [state.theme, state.highContrast, state.initialized]);
+  }, [state.theme, state.highContrast, state.glassmorphism, state.animations, state.initialized]);
 
   // Theme context value
   const value = {
     // Current theme state
     theme: state.theme,
     highContrast: state.highContrast,
+    glassmorphism: state.glassmorphism,
+    animations: state.animations,
+    reducedMotion: state.reducedMotion,
     systemTheme: state.systemTheme,
     initialized: state.initialized,
     
@@ -182,6 +258,10 @@ export const ThemeProvider = ({ children }) => {
     toggleTheme: () => dispatch({ type: 'TOGGLE_THEME' }),
     setHighContrast: (enabled) => dispatch({ type: 'SET_HIGH_CONTRAST', payload: enabled }),
     toggleHighContrast: () => dispatch({ type: 'TOGGLE_HIGH_CONTRAST' }),
+    setGlassmorphism: (enabled) => dispatch({ type: 'SET_GLASSMORPHISM', payload: enabled }),
+    toggleGlassmorphism: () => dispatch({ type: 'TOGGLE_GLASSMORPHISM' }),
+    setAnimations: (enabled) => dispatch({ type: 'SET_ANIMATIONS', payload: enabled }),
+    toggleAnimations: () => dispatch({ type: 'TOGGLE_ANIMATIONS' }),
     
     // Utility functions
     getThemeClass: () => {
@@ -194,6 +274,23 @@ export const ThemeProvider = ({ children }) => {
       if (state.highContrast) return 'High contrast mode';
       if (state.theme === 'auto') return `Auto (${state.systemTheme})`;
       return state.theme === 'dark' ? 'Dark mode' : 'Light mode';
+    },
+    
+    getGlassmorphismClass: () => {
+      return state.glassmorphism ? 'glassmorphism-enabled' : 'glassmorphism-disabled';
+    },
+    
+    getAnimationsClass: () => {
+      return state.animations && !state.reducedMotion ? 'animations-enabled' : 'animations-disabled';
+    },
+    
+    getAccessibilityClass: () => {
+      const classes = [];
+      if (state.highContrast) classes.push('hc-mode');
+      if (state.glassmorphism) classes.push('glassmorphism-enabled');
+      if (state.animations && !state.reducedMotion) classes.push('animations-enabled');
+      if (state.reducedMotion) classes.push('reduced-motion');
+      return classes.join(' ');
     },
   };
 
