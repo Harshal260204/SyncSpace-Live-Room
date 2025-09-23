@@ -11,31 +11,31 @@
 
 /* CSS Custom Properties for modern theming and accessibility */
 :root {
-  /* Light theme colors - modern palette */
+  /* Light theme colors - minimal palette */
   --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
   --bg-glass: rgba(255, 255, 255, 0.1);
   --bg-glass-strong: rgba(255, 255, 255, 0.2);
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --border-primary: #e2e8f0;
-  --border-secondary: #cbd5e1;
+  --text-primary: #1a1a1a;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --border-primary: #e5e5e5;
+  --border-secondary: #d0d0d0;
   --border-glass: rgba(255, 255, 255, 0.2);
-  --accent-primary: #0ea5e9;
-  --accent-secondary: #0284c7;
-  --accent-gradient: linear-gradient(135deg, #0ea5e9, #0284c7);
+  --accent-primary: #2563eb;
+  --accent-secondary: #1d4ed8;
+  --accent-gradient: linear-gradient(135deg, #2563eb, #1d4ed8);
   
-  /* Workspace module colors */
-  --code-primary: #22c55e;
-  --code-gradient: linear-gradient(135deg, #22c55e, #16a34a);
-  --notes-primary: #eab308;
-  --notes-gradient: linear-gradient(135deg, #eab308, #ca8a04);
-  --canvas-primary: #d946ef;
-  --canvas-gradient: linear-gradient(135deg, #d946ef, #c026d3);
-  --chat-primary: #0ea5e9;
-  --chat-gradient: linear-gradient(135deg, #0ea5e9, #0284c7);
+  /* Workspace module colors - minimal */
+  --code-primary: #059669;
+  --code-gradient: linear-gradient(135deg, #059669, #047857);
+  --notes-primary: #d97706;
+  --notes-gradient: linear-gradient(135deg, #d97706, #b45309);
+  --canvas-primary: #7c3aed;
+  --canvas-gradient: linear-gradient(135deg, #7c3aed, #6d28d9);
+  --chat-primary: #2563eb;
+  --chat-gradient: linear-gradient(135deg, #2563eb, #1d4ed8);
   
   /* Status colors */
   --success: #22c55e;
@@ -78,32 +78,32 @@
   --ease-elastic: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Dark theme colors - enhanced for modern UI */
+/* Dark theme colors - professional and clean */
 .dark {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-tertiary: #374151;
   --bg-glass: rgba(0, 0, 0, 0.1);
   --bg-glass-strong: rgba(0, 0, 0, 0.2);
-  --text-primary: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
-  --border-primary: #334155;
-  --border-secondary: #475569;
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --border-primary: #374151;
+  --border-secondary: #4b5563;
   --border-glass: rgba(255, 255, 255, 0.1);
-  --accent-primary: #38bdf8;
-  --accent-secondary: #0ea5e9;
-  --accent-gradient: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  --accent-primary: #3b82f6;
+  --accent-secondary: #2563eb;
+  --accent-gradient: linear-gradient(135deg, #3b82f6, #2563eb);
   
-  /* Workspace module colors for dark mode */
-  --code-primary: #4ade80;
-  --code-gradient: linear-gradient(135deg, #4ade80, #22c55e);
-  --notes-primary: #facc15;
-  --notes-gradient: linear-gradient(135deg, #facc15, #eab308);
-  --canvas-primary: #e879f9;
-  --canvas-gradient: linear-gradient(135deg, #e879f9, #d946ef);
-  --chat-primary: #38bdf8;
-  --chat-gradient: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  /* Workspace module colors for dark mode - minimal */
+  --code-primary: #10b981;
+  --code-gradient: linear-gradient(135deg, #10b981, #059669);
+  --notes-primary: #f59e0b;
+  --notes-gradient: linear-gradient(135deg, #f59e0b, #d97706);
+  --canvas-primary: #8b5cf6;
+  --canvas-gradient: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  --chat-primary: #3b82f6;
+  --chat-gradient: linear-gradient(135deg, #3b82f6, #2563eb);
   
   /* Status colors for dark mode */
   --success: #4ade80;
@@ -169,7 +169,7 @@ html {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 body {
@@ -178,6 +178,33 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   transition: background-color var(--transition-normal) ease, color var(--transition-normal) ease;
+}
+
+/* Enhanced button styles */
+.btn {
+  @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+}
+
+.btn-primary {
+  @apply bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 shadow-sm hover:shadow-md;
+}
+
+.btn-outline {
+  @apply bg-transparent text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 focus:ring-gray-500;
+}
+
+/* Enhanced form styles */
+.input {
+  @apply block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200;
+}
+
+/* Card styles */
+.card {
+  @apply bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm;
+}
+
+.card-floating {
+  @apply bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-lg;
 }
 
 /* Focus management for accessibility */

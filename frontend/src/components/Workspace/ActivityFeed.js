@@ -10,10 +10,8 @@
  * - Accessibility support for screen readers
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
-import { useSocket } from '../../contexts/SocketContext';
-import { useUser } from '../../contexts/UserContext';
 import { useBlindMode } from '../../contexts/BlindModeContext';
 
 /**
@@ -29,9 +27,7 @@ const ActivityFeed = ({
   onRoomUpdate,
   isVisible = true 
 }) => {
-  const { announce, screenReader, keyboardNavigation } = useAccessibility();
-  const { socket, connected, sendEvent } = useSocket();
-  const { user } = useUser();
+  const { announce, screenReader } = useAccessibility();
   const { enabled: blindModeEnabled, announceToScreenReader } = useBlindMode();
 
   // Activity feed state
@@ -44,19 +40,15 @@ const ActivityFeed = ({
   const [showSystemActivities, setShowSystemActivities] = useState(true);
 
   // Presence state
-  const [userPresence, setUserPresence] = useState({});
   const [onlineUsers, setOnlineUsers] = useState([]);
-  const [recentlyActive, setRecentlyActive] = useState([]);
 
   // UI state
   const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
 
   // Refs
   const activityContainerRef = useRef(null);
   const searchInputRef = useRef(null);
-  const lastActivityRef = useRef(null);
 
   // Constants
   const MAX_ACTIVITIES = 1000;
@@ -92,10 +84,7 @@ const ActivityFeed = ({
       filtered = filtered.filter(activity => activity.type === activityFilter);
     }
 
-    // Filter by user
-    if (selectedUser) {
-      filtered = filtered.filter(activity => activity.userId === selectedUser);
-    }
+    // Filter by user (removed for now)
 
     // Filter by search term
     if (searchTerm.trim()) {
@@ -125,21 +114,12 @@ const ActivityFeed = ({
     });
 
     setFilteredActivities(filtered);
-  }, [activities, activityFilter, searchTerm, selectedUser, showUserActivities, showSystemActivities, sortOrder]);
+  }, [activities, activityFilter, searchTerm, showUserActivities, showSystemActivities, sortOrder]);
 
   /**
    * Update user presence
    */
   const updateUserPresence = useCallback((userData) => {
-    setUserPresence(prev => ({
-      ...prev,
-      [userData.userId]: {
-        ...userData,
-        lastSeen: Date.now(),
-        isOnline: true
-      }
-    }));
-
     // Update online users
     setOnlineUsers(prev => {
       const existing = prev.find(u => u.userId === userData.userId);
@@ -151,20 +131,6 @@ const ActivityFeed = ({
         );
       } else {
         return [...prev, { ...userData, lastSeen: Date.now(), isOnline: true }];
-      }
-    });
-
-    // Update recently active
-    setRecentlyActive(prev => {
-      const existing = prev.find(u => u.userId === userData.userId);
-      if (existing) {
-        return prev.map(u => 
-          u.userId === userData.userId 
-            ? { ...u, lastSeen: Date.now() }
-            : u
-        );
-      } else {
-        return [...prev, { ...userData, lastSeen: Date.now() }];
       }
     });
   }, []);
@@ -209,56 +175,7 @@ const ActivityFeed = ({
     }
   }, [screenReader, announce, updateUserPresence, blindModeEnabled, announceToScreenReader]);
 
-  /**
-   * Handle user join activity
-   */
-  const handleUserJoin = useCallback((userData) => {
-    const activity = {
-      type: 'join',
-      description: `${userData.username} joined the room`,
-      details: `User joined at ${new Date().toLocaleTimeString()}`,
-      timestamp: Date.now(),
-      userId: userData.userId,
-      username: userData.username,
-      color: userData.color || '#000000'
-    };
 
-    addActivity(activity);
-    updateUserPresence(userData);
-  }, [addActivity, updateUserPresence]);
-
-  /**
-   * Handle user leave activity
-   */
-  const handleUserLeave = useCallback((userData) => {
-    const activity = {
-      type: 'leave',
-      description: `${userData.username} left the room`,
-      details: `User left at ${new Date().toLocaleTimeString()}`,
-      timestamp: Date.now(),
-      userId: userData.userId,
-      username: userData.username,
-      color: userData.color || '#000000'
-    };
-
-    addActivity(activity);
-
-    // Update presence
-    setUserPresence(prev => {
-      const updated = { ...prev };
-      if (updated[userData.userId]) {
-        updated[userData.userId].isOnline = false;
-        updated[userData.userId].lastSeen = Date.now();
-      }
-      return updated;
-    });
-
-    setOnlineUsers(prev => prev.map(u => 
-      u.userId === userData.userId 
-        ? { ...u, isOnline: false, lastSeen: Date.now() }
-        : u
-    ));
-  }, [addActivity]);
 
   /**
    * Handle message activity

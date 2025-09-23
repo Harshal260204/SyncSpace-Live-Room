@@ -5,8 +5,9 @@
  * preferences, and session handling
  */
 
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { userAPI } from '../services/api';
 
 // User context
 const UserContext = createContext();
@@ -84,8 +85,28 @@ const initialState = {
  */
 export const UserProvider = ({ children }) => {
   const [state, dispatch] = useReducer(userReducer, initialState);
+  const cleanupRefs = useRef([]);
 
-  // Initialize user from localStorage
+  // Cleanup function to prevent memory leaks
+  const cleanup = useCallback(() => {
+    // Clear all cleanup refs
+    cleanupRefs.current.forEach(cleanup => {
+      if (cleanup) {
+        cleanup();
+      }
+    });
+    cleanupRefs.current = [];
+    
+    // Clear user state
+    dispatch({ type: 'CLEAR_USER' });
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
+
+  // Initialize user from localStorage with proper error handling
   useEffect(() => {
     const initializeUser = () => {
       try {
@@ -94,33 +115,48 @@ export const UserProvider = ({ children }) => {
         
         if (savedUser && savedSessionId) {
           const user = JSON.parse(savedUser);
-          dispatch({
-            type: 'SET_USER',
-            payload: {
-              ...user,
-              sessionId: savedSessionId,
-            },
-          });
+          
+          // Validate user data structure
+          if (user && user.userId && user.username && user.sessionId) {
+            dispatch({
+              type: 'SET_USER',
+              payload: {
+                ...user,
+                sessionId: savedSessionId,
+              },
+            });
+          } else {
+            throw new Error('Invalid user data structure');
+          }
         }
       } catch (error) {
         console.error('Error initializing user:', error);
         // Clear invalid data
         localStorage.removeItem('liveroom-user');
         localStorage.removeItem('liveroom-session-id');
+        dispatch({ type: 'CLEAR_USER' });
       }
     };
 
     initializeUser();
   }, []);
 
-  // Save user to localStorage when it changes
+  // Save user to localStorage when it changes with proper error handling
   useEffect(() => {
     if (state.user) {
       try {
-        localStorage.setItem('liveroom-user', JSON.stringify(state.user));
-        localStorage.setItem('liveroom-session-id', state.user.sessionId);
+        // Validate user data before saving
+        if (state.user.userId && state.user.username && state.user.sessionId) {
+          localStorage.setItem('liveroom-user', JSON.stringify(state.user));
+          localStorage.setItem('liveroom-session-id', state.user.sessionId);
+        } else {
+          console.warn('Invalid user data, not saving to localStorage');
+        }
       } catch (error) {
         console.error('Error saving user data:', error);
+        // Clear corrupted data
+        localStorage.removeItem('liveroom-user');
+        localStorage.removeItem('liveroom-session-id');
       }
     }
   }, [state.user]);
@@ -132,10 +168,8 @@ export const UserProvider = ({ children }) => {
 
     try {
       const sessionId = uuidv4();
-      const userId = uuidv4();
       
-      const user = {
-        userId,
+      const userData = {
         username: username.trim(),
         sessionId,
         preferences: {
@@ -158,16 +192,20 @@ export const UserProvider = ({ children }) => {
           },
           ...preferences,
         },
-        createdAt: new Date().toISOString(),
-        lastSeen: new Date().toISOString(),
       };
 
+      // Create user via API
+      const createdUser = await userAPI.createUser(userData);
+      
+      // Store user in localStorage for persistence
+      localStorage.setItem('liveroom-user', JSON.stringify(createdUser));
+      
       dispatch({
         type: 'SET_USER',
-        payload: user,
+        payload: createdUser,
       });
 
-      return user;
+      return createdUser;
     } catch (error) {
       console.error('Error creating user:', error);
       dispatch({
@@ -205,7 +243,7 @@ export const UserProvider = ({ children }) => {
   };
 
   // Join room
-  const joinRoom = (roomId) => {
+  const joinRoom = useCallback((roomId) => {
     dispatch({
       type: 'SET_CURRENT_ROOM',
       payload: roomId,
@@ -222,10 +260,10 @@ export const UserProvider = ({ children }) => {
         payload: updatedUser,
       });
     }
-  };
+  }, [state.user]);
 
   // Leave room
-  const leaveRoom = () => {
+  const leaveRoom = useCallback(() => {
     dispatch({
       type: 'CLEAR_CURRENT_ROOM',
     });
@@ -241,7 +279,7 @@ export const UserProvider = ({ children }) => {
         payload: updatedUser,
       });
     }
-  };
+  }, [state.user]);
 
   // Logout user
   const logout = () => {

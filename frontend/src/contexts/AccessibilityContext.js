@@ -5,7 +5,7 @@
  * keyboard navigation, font sizing, and live announcements
  */
 
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 
 // Accessibility context
 const AccessibilityContext = createContext();
@@ -194,7 +194,7 @@ export const AccessibilityProvider = ({ children }) => {
   }, [state.fontSize, state.reducedMotion, state.keyboardNavigation, state.initialized]);
 
   // Live announcement system
-  const announce = (message, priority = 'polite') => {
+  const announce = useCallback((message, priority = 'polite') => {
     if (state.announceChanges) {
       dispatch({
         type: 'ANNOUNCE',
@@ -203,21 +203,35 @@ export const AccessibilityProvider = ({ children }) => {
       
       // Also use the browser's built-in announcement
       if (state.screenReader) {
+        // Find or create the announcement container
+        let announcementContainer = document.getElementById('accessibility-announcements');
+        if (!announcementContainer) {
+          announcementContainer = document.createElement('div');
+          announcementContainer.id = 'accessibility-announcements';
+          announcementContainer.setAttribute('aria-live', 'polite');
+          announcementContainer.setAttribute('aria-atomic', 'true');
+          announcementContainer.className = 'sr-only';
+          document.body.appendChild(announcementContainer);
+        }
+        
+        // Create announcement element
         const announcement = document.createElement('div');
         announcement.setAttribute('aria-live', priority);
         announcement.setAttribute('aria-atomic', 'true');
         announcement.className = 'sr-only';
         announcement.textContent = message;
         
-        document.body.appendChild(announcement);
+        announcementContainer.appendChild(announcement);
         
         // Remove after announcement
         setTimeout(() => {
-          document.body.removeChild(announcement);
+          if (announcement.parentNode) {
+            announcement.parentNode.removeChild(announcement);
+          }
         }, 1000);
       }
     }
-  };
+  }, [state.announceChanges, state.screenReader]);
 
   // Accessibility context value
   const value = {

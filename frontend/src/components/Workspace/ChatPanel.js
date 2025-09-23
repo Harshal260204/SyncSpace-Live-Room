@@ -11,7 +11,7 @@
  * - Message history and search
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
@@ -39,12 +39,11 @@ const ChatPanel = ({
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [typingUsers, setTypingUsers] = useState({});
+  const [typingUsers] = useState({});
   const [unreadCount, setUnreadCount] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
 
   // Activity feed state
-  const [activities, setActivities] = useState([]);
   const [recentActivities, setRecentActivities] = useState([]);
   const [activityFilter, setActivityFilter] = useState('all'); // all, messages, joins, leaves, drawing, typing
 
@@ -62,27 +61,57 @@ const ChatPanel = ({
   // UI state
   const [showSettings, setShowSettings] = useState(false);
   const [showActivityFeed, setShowActivityFeed] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [filteredMessages, setFilteredMessages] = useState([]);
   
   // Blind Mode state
   const [lastMessage, setLastMessage] = useState(null);
-  const [messageHistory, setMessageHistory] = useState([]);
   const [currentAnnouncement, setCurrentAnnouncement] = useState(null);
 
-  // Refs
+  // Refs with proper cleanup
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const chatContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const audioContextRef = useRef(null);
   const announcementTimeoutRef = useRef(null);
+  const cleanupRefs = useRef([]);
 
   // Constants
   const TYPING_TIMEOUT = 3000; // 3 seconds
   const NOTIFICATION_DURATION = 5000; // 5 seconds
   const MAX_MESSAGES = 1000; // Maximum messages to keep in memory
-  const MAX_ACTIVITIES = 500; // Maximum activities to keep in memory
+
+  // Cleanup function to prevent memory leaks
+  const cleanup = useCallback(() => {
+    // Clear all timeouts
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (announcementTimeoutRef.current) {
+      clearTimeout(announcementTimeoutRef.current);
+      announcementTimeoutRef.current = null;
+    }
+    
+    // Clear all cleanup refs
+    cleanupRefs.current.forEach(cleanup => {
+      if (cleanup) {
+        cleanup();
+      }
+    });
+    cleanupRefs.current = [];
+    
+    // Clear audio context
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
 
   /**
    * Announce message for Blind Mode
@@ -125,7 +154,6 @@ const ChatPanel = ({
     
     // Update message history
     if (type === 'message') {
-      setMessageHistory(prev => [...prev.slice(-9), messageData]);
       setLastMessage(messageData);
     }
     
@@ -143,6 +171,51 @@ const ChatPanel = ({
       setMessages(roomData.chat);
     }
   }, [roomData?.chat]);
+
+  /**
+   * Add activity to feed
+   */
+  const addActivity = useCallback((activity) => {
+    setRecentActivities(prev => {
+      const updated = [...prev, activity];
+      return updated.slice(-10); // Keep only last 10 for recent activities
+    });
+  }, []);
+
+  /**
+   * Show notification
+   */
+  const showNotification = useCallback((notification) => {
+    const notificationId = `notif-${Date.now()}-${Math.random()}`;
+    const newNotification = {
+      ...notification,
+      id: notificationId,
+      timestamp: Date.now()
+    };
+
+    setNotifications(prev => [...prev, newNotification]);
+
+    // Auto-remove notification
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    }, notification.duration || NOTIFICATION_DURATION);
+  }, []);
+
+
+  /**
+   * Handle keyboard shortcuts
+   */
+  const handleKeyDown = useCallback((e) => {
+    // Ctrl+Shift+M: Read last message
+    if (e.ctrlKey && e.shiftKey && e.key === 'm') {
+      e.preventDefault();
+      if (blindModeEnabled && lastMessage) {
+        announceToScreenReader(`Last message: ${lastMessage.username}: ${lastMessage.text}`);
+      } else if (blindModeEnabled) {
+        announceToScreenReader('No recent messages to announce');
+      }
+    }
+  }, [blindModeEnabled, lastMessage, announceToScreenReader]);
 
   /**
    * Add keyboard event listener for shortcuts
@@ -180,19 +253,11 @@ const ChatPanel = ({
   }, [notificationSettings.soundEnabled]);
 
   /**
-   * Filter messages based on search term
+   * Update filtered messages when messages change
    */
   useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredMessages(messages);
-    } else {
-      const filtered = messages.filter(message =>
-        message.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        message.username.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredMessages(filtered);
-    }
-  }, [messages, searchTerm]);
+    setFilteredMessages(messages);
+  }, [messages]);
 
   /**
    * Auto-scroll to bottom when new messages arrive
@@ -251,231 +316,8 @@ const ChatPanel = ({
     }
   }, [isFocused, user, screenReader, announce, addActivity, showNotification, announceForBlindMode, blindModeEnabled]);
 
-  /**
-   * Handle user join
-   */
-  const handleUserJoin = useCallback((userData) => {
-    const activity = {
-      type: 'join',
-      description: `${userData.username} joined the room`,
-      details: `User joined at ${new Date().toLocaleTimeString()}`,
-      timestamp: Date.now(),
-      userId: userData.userId,
-      username: userData.username
-    };
 
-    addActivity(activity);
 
-    // Show notification
-    if (notificationSettings.joinLeaveEnabled) {
-      showNotification({
-        type: 'join',
-        title: 'User Joined',
-        message: `${userData.username} joined the room`,
-        duration: NOTIFICATION_DURATION
-      });
-    }
-
-    // Announce for Blind Mode
-    announceForBlindMode(userData, 'join');
-
-    // Announce to screen readers (fallback)
-    if (screenReader && !blindModeEnabled) {
-      announce(`${userData.username} joined the room`, 'polite');
-    }
-
-    // Play join sound
-    if (notificationSettings.soundEnabled) {
-      playNotificationSound('join');
-    }
-  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification, announceForBlindMode, blindModeEnabled]);
-
-  /**
-   * Handle user leave
-   */
-  const handleUserLeave = useCallback((userData) => {
-    const activity = {
-      type: 'leave',
-      description: `${userData.username} left the room`,
-      details: `User left at ${new Date().toLocaleTimeString()}`,
-      timestamp: Date.now(),
-      userId: userData.userId,
-      username: userData.username
-    };
-
-    addActivity(activity);
-
-    // Show notification
-    if (notificationSettings.joinLeaveEnabled) {
-      showNotification({
-        type: 'leave',
-        title: 'User Left',
-        message: `${userData.username} left the room`,
-        duration: NOTIFICATION_DURATION
-      });
-    }
-
-    // Announce for Blind Mode
-    announceForBlindMode(userData, 'leave');
-
-    // Announce to screen readers (fallback)
-    if (screenReader && !blindModeEnabled) {
-      announce(`${userData.username} left the room`, 'polite');
-    }
-
-    // Play leave sound
-    if (notificationSettings.soundEnabled) {
-      playNotificationSound('leave');
-    }
-  }, [notificationSettings, screenReader, announce, addActivity, playNotificationSound, showNotification, announceForBlindMode, blindModeEnabled]);
-
-  /**
-   * Handle typing start
-   */
-  const handleTypingStart = useCallback((userData) => {
-    setTypingUsers(prev => ({
-      ...prev,
-      [userData.userId]: {
-        username: userData.username,
-        timestamp: Date.now()
-      }
-    }));
-
-    // Add to activity feed
-    addActivity({
-      type: 'typing',
-      description: `${userData.username} is typing`,
-      details: `Started typing at ${new Date().toLocaleTimeString()}`,
-      timestamp: Date.now(),
-      userId: userData.userId,
-      username: userData.username
-    });
-
-    // Announce for Blind Mode
-    announceForBlindMode(userData, 'typing');
-
-    // Show notification if enabled
-    if (notificationSettings.typingEnabled && userData.userId !== user?.userId) {
-      showNotification({
-        type: 'typing',
-        title: 'User Typing',
-        message: `${userData.username} is typing...`,
-        duration: 2000
-      });
-    }
-  }, [notificationSettings, user, announceForBlindMode]);
-
-  /**
-   * Handle typing stop
-   */
-  const handleTypingStop = useCallback((userData) => {
-    setTypingUsers(prev => {
-      const newTypingUsers = { ...prev };
-      delete newTypingUsers[userData.userId];
-      return newTypingUsers;
-    });
-  }, []);
-
-  /**
-   * Handle drawing event
-   */
-  const handleDrawingEvent = useCallback((eventData) => {
-    const activity = {
-      type: 'drawing',
-      description: `${eventData.username} drew something`,
-      details: `Used ${eventData.tool} tool`,
-      timestamp: Date.now(),
-      userId: eventData.userId,
-      username: eventData.username
-    };
-
-    addActivity(activity);
-
-    // Show notification if enabled
-    if (notificationSettings.drawingEnabled && eventData.userId !== user?.userId) {
-      showNotification({
-        type: 'drawing',
-        title: 'Drawing Activity',
-        message: `${eventData.username} drew something`,
-        duration: NOTIFICATION_DURATION
-      });
-    }
-
-    // Announce to screen readers
-    if (screenReader) {
-      announce(`${eventData.username} drew something`, 'polite');
-    }
-  }, [notificationSettings, user, screenReader, announce, addActivity, playNotificationSound, showNotification]);
-
-  /**
-   * Add activity to feed
-   */
-  const addActivity = useCallback((activity) => {
-    setActivities(prev => {
-      const updated = [...prev, activity];
-      return updated.slice(-MAX_ACTIVITIES); // Keep only last MAX_ACTIVITIES
-    });
-
-    setRecentActivities(prev => {
-      const updated = [...prev, activity];
-      return updated.slice(-10); // Keep only last 10 for recent activities
-    });
-  }, []);
-
-  /**
-   * Show notification
-   */
-  const showNotification = useCallback((notification) => {
-    const notificationId = `notif-${Date.now()}-${Math.random()}`;
-    const newNotification = {
-      ...notification,
-      id: notificationId,
-      timestamp: Date.now()
-    };
-
-    setNotifications(prev => [...prev, newNotification]);
-
-    // Auto-remove notification
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    }, notification.duration || NOTIFICATION_DURATION);
-  }, []);
-
-  /**
-   * Play notification sound
-   */
-  const playNotificationSound = useCallback((type) => {
-    if (!audioContextRef.current) return;
-
-    const audioContext = audioContextRef.current;
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    // Different frequencies for different notification types
-    const frequencies = {
-      message: [800, 600],
-      join: [1000, 800, 600],
-      leave: [600, 400, 200],
-      typing: [400],
-      drawing: [1200, 1000]
-    };
-
-    const freq = frequencies[type] || [800];
-    let currentTime = audioContext.currentTime;
-
-    freq.forEach((frequency, index) => {
-      oscillator.frequency.setValueAtTime(frequency, currentTime);
-      gainNode.gain.setValueAtTime(0.1, currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.2);
-      currentTime += 0.2;
-    });
-
-    oscillator.start();
-    oscillator.stop(currentTime);
-  }, []);
 
   /**
    * Send message
@@ -559,21 +401,6 @@ const ChatPanel = ({
   }, [sendMessage]);
 
   /**
-   * Handle keyboard shortcuts
-   */
-  const handleKeyDown = useCallback((e) => {
-    // Ctrl+Shift+M: Read last message
-    if (e.ctrlKey && e.shiftKey && e.key === 'm') {
-      e.preventDefault();
-      if (blindModeEnabled && lastMessage) {
-        announceToScreenReader(`Last message: ${lastMessage.username}: ${lastMessage.text}`);
-      } else if (blindModeEnabled) {
-        announceToScreenReader('No recent messages to announce');
-      }
-    }
-  }, [blindModeEnabled, lastMessage, announceToScreenReader]);
-
-  /**
    * Handle focus
    */
   const handleFocus = useCallback(() => {
@@ -588,13 +415,6 @@ const ChatPanel = ({
     setIsFocused(false);
   }, []);
 
-  /**
-   * Filter activities
-   */
-  const filteredActivities = useMemo(() => {
-    if (activityFilter === 'all') return activities;
-    return activities.filter(activity => activity.type === activityFilter);
-  }, [activities, activityFilter]);
 
   /**
    * Render message

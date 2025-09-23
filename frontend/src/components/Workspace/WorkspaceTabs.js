@@ -161,7 +161,6 @@ const WorkspaceTabs = ({
     if (!keyboardNavigation || !isFocused) return;
 
     const currentIndex = tabs.findIndex(tab => tab.id === activeTab?.id);
-    const visibleTabs = tabs.filter(tab => !tab.hidden);
 
     switch (event.key) {
       case 'ArrowLeft':
@@ -202,6 +201,9 @@ const WorkspaceTabs = ({
         if (renamingTab) {
           handleTabRenameCancel();
         }
+        break;
+      default:
+        // No action needed for other keys
         break;
     }
   }, [keyboardNavigation, isFocused, activeTab, tabs, handleTabSelect, handleTabClose, handleTabRenameStart, handleTabRenameCancel, renamingTab]);
@@ -273,6 +275,9 @@ const WorkspaceTabs = ({
         event.preventDefault();
         handleTabRenameCancel();
         break;
+      default:
+        // No action needed for other keys
+        break;
     }
   }, [handleTabRenameConfirm, handleTabRenameCancel]);
 
@@ -334,6 +339,12 @@ const WorkspaceTabs = ({
                 ${tab.hidden ? 'hidden' : ''}
               `}
               onClick={() => handleTabSelect(tab)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleTabSelect(tab);
+                }
+              }}
               onDragStart={(e) => handleDragStart(tab, e)}
               draggable={tab.reorderable}
               role="tab"

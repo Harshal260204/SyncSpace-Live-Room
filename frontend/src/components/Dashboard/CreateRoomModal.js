@@ -8,7 +8,7 @@
  * - Keyboard navigation
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 
 /**
@@ -88,7 +88,7 @@ const CreateRoomModal = ({ onClose, onCreateRoom }) => {
   };
 
   // Handle form submission
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -101,7 +101,7 @@ const CreateRoomModal = ({ onClose, onCreateRoom }) => {
     setIsSubmitting(true);
     
     try {
-      onCreateRoom(formData);
+      await onCreateRoom(formData);
       
       if (screenReader) {
         announce(`Room "${formData.roomName}" created successfully`, 'polite');
@@ -119,11 +119,11 @@ const CreateRoomModal = ({ onClose, onCreateRoom }) => {
   };
 
   // Handle keyboard navigation
-  const handleKeyDown = (e) => {
+  const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
       onClose();
     }
-  };
+  }, [onClose]);
 
   // Set up keyboard navigation
   React.useEffect(() => {

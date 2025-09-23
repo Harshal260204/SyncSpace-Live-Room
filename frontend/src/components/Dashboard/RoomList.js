@@ -8,9 +8,10 @@
  * - Accessibility features
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSocket } from '../../contexts/SocketContext';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
+import { roomAPI } from '../../services/api';
 import LoadingSpinner from '../UI/LoadingSpinner';
 
 /**
@@ -20,6 +21,7 @@ import LoadingSpinner from '../UI/LoadingSpinner';
  * Includes accessibility features and real-time updates
  */
 const RoomList = ({ onJoinRoom }) => {
+  console.log('🔄 RoomList component rendered');
   const { connected } = useSocket();
   const { announce, screenReader } = useAccessibility();
   
@@ -31,27 +33,24 @@ const RoomList = ({ onJoinRoom }) => {
   const [filter, setFilter] = useState('all'); // 'all', 'active', 'recent'
 
   // Fetch rooms from API
-  const fetchRooms = async () => {
-    if (!connected) return;
-    
+  const fetchRooms = useCallback(async () => {
+    console.log('🔄 fetchRooms called - this should only happen once on mount');
     setLoading(true);
     setError(null);
     
     try {
-      const response = await fetch('/api/rooms');
-      if (!response.ok) {
-        throw new Error('Failed to fetch rooms');
-      }
-      
-      const data = await response.json();
+      console.log('📡 Fetching rooms from API');
+      const data = await roomAPI.getRooms();
+      console.log('✅ Rooms data received:', data);
       setRooms(data.rooms || []);
       
+      // Use screenReader and announce directly without dependencies
       if (screenReader) {
         announce(`Loaded ${data.rooms?.length || 0} rooms`, 'polite');
       }
       
     } catch (err) {
-      console.error('Error fetching rooms:', err);
+      console.error('❌ Error fetching rooms:', err);
       setError(err.message);
       
       if (screenReader) {
@@ -60,12 +59,12 @@ const RoomList = ({ onJoinRoom }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // Remove dependencies to prevent infinite loops
 
-  // Fetch rooms on component mount and when connection changes
+  // Fetch rooms on component mount
   useEffect(() => {
     fetchRooms();
-  }, [connected, fetchRooms]);
+  }, [fetchRooms]);
 
   // Filter rooms based on search term and filter
   const filteredRooms = rooms.filter(room => {

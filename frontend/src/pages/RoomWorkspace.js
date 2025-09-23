@@ -10,7 +10,7 @@
  * - Accessibility features
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { useSocket } from '../contexts/SocketContext';
@@ -34,6 +34,7 @@ import ErrorBoundary from '../components/UI/ErrorBoundary';
  * Handles real-time collaboration and accessibility features
  */
 const RoomWorkspace = () => {
+  console.log('🔄 RoomWorkspace component rendered');
   const { roomId } = useParams();
   const navigate = useNavigate();
   
@@ -62,42 +63,84 @@ const RoomWorkspace = () => {
   const [showChat, setShowChat] = useState(true);
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
 
-  // Refs for collaboration
+  // Refs for collaboration with proper cleanup
   const workspaceRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
+  const isJoiningRef = useRef(false);
+  const cleanupRefs = useRef([]);
+
+  // Cleanup function to prevent memory leaks
+  const cleanup = useCallback(() => {
+    // Clear all cleanup refs
+    cleanupRefs.current.forEach(cleanup => {
+      if (cleanup) {
+        cleanup();
+      }
+    });
+    cleanupRefs.current = [];
+    
+    // Reset joining state
+    isJoiningRef.current = false;
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
+
+  // Stable join room function
+  const joinRoomSession = useCallback(async () => {
+    console.log('🔄 joinRoomSession called', { 
+      isAuthenticated, 
+      connected, 
+      roomId, 
+      user: !!user,
+      isJoiningRef: isJoiningRef.current 
+    });
+    
+    if (!isAuthenticated || !connected || !roomId || !user) {
+      console.log('❌ Missing requirements for joining room:', { isAuthenticated, connected, roomId, user: !!user });
+      return;
+    }
+
+    // Prevent multiple simultaneous join attempts
+    if (isJoiningRef.current) {
+      console.log('⏳ Already joining room, skipping...');
+      return;
+    }
+
+    console.log('🚀 Attempting to join room:', roomId);
+    isJoiningRef.current = true;
+    setIsJoining(true);
+    
+    try {
+      // Join user to room in user context
+      joinUserRoom(roomId);
+      
+      // Join room via socket
+      joinRoom(roomId, user.username, user.preferences);
+      
+      // Announce room join for screen readers
+      if (screenReader) {
+        announce(`Joined room ${roomId}`, 'polite');
+      }
+      
+    } catch (error) {
+      console.error('Error joining room:', error);
+      announce('Failed to join room. Please try again.', 'assertive');
+      navigate('/');
+    } finally {
+      isJoiningRef.current = false;
+      setIsJoining(false);
+    }
+  }, [isAuthenticated, connected, roomId, user, joinUserRoom, joinRoom, screenReader, announce, navigate]);
 
   // Join room when component mounts
   useEffect(() => {
-    const joinRoomSession = async () => {
-      if (!isAuthenticated || !connected || !roomId || !user) {
-        return;
-      }
-
-      setIsJoining(true);
-      
-      try {
-        // Join user to room in user context
-        joinUserRoom(roomId);
-        
-        // Join room via socket
-        joinRoom(roomId, user.username, user.preferences);
-        
-        // Announce room join for screen readers
-        if (screenReader) {
-          announce(`Joined room ${roomId}`, 'polite');
-        }
-        
-      } catch (error) {
-        console.error('Error joining room:', error);
-        announce('Failed to join room. Please try again.', 'assertive');
-        navigate('/');
-      } finally {
-        setIsJoining(false);
-      }
-    };
-
+    console.log('🔄 RoomWorkspace useEffect triggered', { isAuthenticated, connected, roomId, userId: user?.userId, isJoiningRef: isJoiningRef.current });
+    
     joinRoomSession();
-  }, [isAuthenticated, connected, roomId, user?.username, user?.preferences, joinRoom, joinUserRoom, navigate, announce, screenReader]);
+  }, [joinRoomSession]);
 
   // Leave room when component unmounts
   useEffect(() => {
@@ -107,87 +150,90 @@ const RoomWorkspace = () => {
         leaveUserRoom();
       }
     };
-  }, [currentRoom, roomId, leaveRoom, leaveUserRoom]);
+  }, [currentRoom, roomId]); // Removed function dependencies
+
+  // Handle mouse movement for cursor tracking
+  const handleMouseMove = useCallback((e) => {
+    if (workspaceRef.current) {
+      const rect = workspaceRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      setCursorPosition({ x, y });
+      
+      // Send presence update every 100ms to avoid spam
+      const now = Date.now();
+      if (now - lastActivityRef.current > 100) {
+        sendPresenceUpdate({ x, y }, true);
+        lastActivityRef.current = now;
+      }
+    }
+  }, [sendPresenceUpdate]);
+
+  const handleMouseLeave = useCallback(() => {
+    // Use current cursor position from state
+    setCursorPosition(prev => {
+      sendPresenceUpdate(prev, false);
+      return prev;
+    });
+  }, [sendPresenceUpdate]);
 
   // Handle presence updates
   useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (workspaceRef.current) {
-        const rect = workspaceRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        
-        setCursorPosition({ x, y });
-        
-        // Send presence update every 100ms to avoid spam
-        const now = Date.now();
-        if (now - lastActivityRef.current > 100) {
-          sendPresenceUpdate({ x, y }, true);
-          lastActivityRef.current = now;
-        }
-      }
-    };
-
-    const handleMouseLeave = () => {
-      // Use current cursor position from state
-      setCursorPosition(prev => {
-        sendPresenceUpdate(prev, false);
-        return prev;
-      });
-    };
-
-    if (workspaceRef.current) {
-      workspaceRef.current.addEventListener('mousemove', handleMouseMove);
-      workspaceRef.current.addEventListener('mouseleave', handleMouseLeave);
+    console.log('🔄 Presence updates useEffect triggered');
+    
+    const currentWorkspace = workspaceRef.current;
+    if (currentWorkspace) {
+      currentWorkspace.addEventListener('mousemove', handleMouseMove);
+      currentWorkspace.addEventListener('mouseleave', handleMouseLeave);
     }
 
     return () => {
-      const currentWorkspace = workspaceRef.current;
       if (currentWorkspace) {
         currentWorkspace.removeEventListener('mousemove', handleMouseMove);
         currentWorkspace.removeEventListener('mouseleave', handleMouseLeave);
       }
     };
-  }, [sendPresenceUpdate]);
+  }, [handleMouseMove, handleMouseLeave]);
 
   // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e) => {
+    // Ctrl/Cmd + K for command palette
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      // TODO: Implement command palette
+      return;
+    }
+
+    // Ctrl/Cmd + 1-4 for tab switching
+    if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '4') {
+      e.preventDefault();
+      const tabIndex = parseInt(e.key) - 1;
+      const tabs = ['code', 'notes', 'canvas', 'chat'];
+      if (tabs[tabIndex]) {
+        setActiveTab(tabs[tabIndex]);
+      }
+      return;
+    }
+
+    // Escape to leave fullscreen
+    if (e.key === 'Escape' && isFullscreen) {
+      setIsFullscreen(false);
+      return;
+    }
+
+    // F11 for fullscreen toggle
+    if (e.key === 'F11') {
+      e.preventDefault();
+      setIsFullscreen(!isFullscreen);
+      return;
+    }
+  }, [isFullscreen, setActiveTab]);
+
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ctrl/Cmd + K for command palette
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        // TODO: Implement command palette
-        return;
-      }
-
-      // Ctrl/Cmd + 1-4 for tab switching
-      if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '4') {
-        e.preventDefault();
-        const tabIndex = parseInt(e.key) - 1;
-        const tabs = ['code', 'notes', 'canvas', 'chat'];
-        if (tabs[tabIndex]) {
-          setActiveTab(tabs[tabIndex]);
-        }
-        return;
-      }
-
-      // Escape to leave fullscreen
-      if (e.key === 'Escape' && isFullscreen) {
-        setIsFullscreen(false);
-        return;
-      }
-
-      // F11 for fullscreen toggle
-      if (e.key === 'F11') {
-        e.preventDefault();
-        setIsFullscreen(!isFullscreen);
-        return;
-      }
-    };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen]);
+  }, [handleKeyDown]);
 
   // Handle beforeunload to warn about leaving
   useEffect(() => {

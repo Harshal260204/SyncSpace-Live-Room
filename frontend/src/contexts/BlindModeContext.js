@@ -100,14 +100,6 @@ export const BlindModeProvider = ({ children }) => {
     }
   }, [state.enabled, state.initialized]);
 
-  // Announce Blind Mode status changes
-  useEffect(() => {
-    if (state.initialized) {
-      const announcement = state.enabled ? 'Blind Mode enabled' : 'Blind Mode disabled';
-      announceToScreenReader(announcement);
-    }
-  }, [state.enabled, state.initialized]);
-
   // Function to announce messages to screen readers
   const announceToScreenReader = useCallback((message) => {
     // Clear any existing announcement
@@ -124,6 +116,14 @@ export const BlindModeProvider = ({ children }) => {
     }, 100);
   }, []);
 
+  // Announce Blind Mode status changes
+  useEffect(() => {
+    if (state.initialized) {
+      const announcement = state.enabled ? 'Blind Mode enabled' : 'Blind Mode disabled';
+      announceToScreenReader(announcement);
+    }
+  }, [state.enabled, state.initialized, announceToScreenReader]);
+
   // Toggle Blind Mode
   const toggleBlindMode = useCallback(() => {
     dispatch({ type: 'TOGGLE_BLIND_MODE' });
@@ -135,16 +135,16 @@ export const BlindModeProvider = ({ children }) => {
   }, []);
 
   // Keyboard shortcut handler (Ctrl+B)
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      // Check for Ctrl+B (or Cmd+B on Mac)
-      if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleBlindMode();
-      }
-    };
+  const handleKeyDown = useCallback((event) => {
+    // Check for Ctrl+B (or Cmd+B on Mac)
+    if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleBlindMode();
+    }
+  }, [toggleBlindMode]);
 
+  useEffect(() => {
     // Add event listener
     document.addEventListener('keydown', handleKeyDown);
 
@@ -152,7 +152,7 @@ export const BlindModeProvider = ({ children }) => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [toggleBlindMode]);
+  }, [handleKeyDown]);
 
   // Blind Mode context value
   const value = {

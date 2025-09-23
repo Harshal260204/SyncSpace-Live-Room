@@ -16,6 +16,7 @@ import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
 import { useBlindMode } from '../../contexts/BlindModeContext';
+import * as fabric from 'fabric';
 
 /**
  * Canvas Drawing Component
@@ -100,16 +101,46 @@ const CanvasDrawing = ({
     panY: 0
   });
 
-  // Refs
+  // Refs with proper cleanup
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const lastPointRef = useRef(null);
   const isDrawingRef = useRef(false);
   const currentPathRef = useRef([]);
+  const cleanupRefs = useRef([]);
 
   // Drawing constants
   const MIN_STROKE_WIDTH = 1;
   const MAX_STROKE_WIDTH = 50;
+
+  // Cleanup function to prevent memory leaks
+  const cleanup = useCallback(() => {
+    // Clear all timeouts and intervals
+    cleanupRefs.current.forEach(cleanup => {
+      if (cleanup) {
+        cleanup();
+      }
+    });
+    cleanupRefs.current = [];
+    
+    // Clear canvas context
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+    }
+    
+    // Reset drawing state
+    isDrawingRef.current = false;
+    currentPathRef.current = [];
+    lastPointRef.current = null;
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
 
   /**
    * Generate action description for Blind Mode
@@ -241,6 +272,136 @@ const CanvasDrawing = ({
   }, [blindModeEnabled, generateActionDescription, announceToScreenReader]);
 
   /**
+   * Generate textual description of canvas content
+   */
+  const generateCanvasDescription = useCallback(() => {
+    if (!canvas) return;
+
+    const objects = canvas.getObjects();
+    const descriptions = [];
+
+    objects.forEach((obj, index) => {
+      let description = '';
+      
+      if (obj.type === 'rect') {
+        description = `Rectangle ${index + 1}: ${obj.width}x${obj.height} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      } else if (obj.type === 'circle') {
+        description = `Circle ${index + 1}: radius ${Math.round(obj.radius)} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      } else if (obj.type === 'line') {
+        description = `Line ${index + 1}: from (${Math.round(obj.x1)}, ${Math.round(obj.y1)}) to (${Math.round(obj.x2)}, ${Math.round(obj.y2)}), color ${obj.stroke}`;
+      } else if (obj.type === 'text') {
+        description = `Text ${index + 1}: "${obj.text}", color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      } else if (obj.type === 'path') {
+        description = `Drawing ${index + 1}: ${obj.path.length} points, color ${obj.stroke}, width ${obj.strokeWidth}`;
+      } else {
+        description = `Object ${index + 1}: ${obj.type}, color ${obj.fill || obj.stroke}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
+      }
+      
+      descriptions.push(description);
+    });
+
+    setDrawingDescriptions(descriptions);
+    
+    if (screenReader) {
+      announce(`Canvas updated: ${objects.length} objects`, 'polite');
+    }
+  }, [canvas, screenReader, announce, setDrawingDescriptions]);
+
+  /**
+   * Handle redo
+   */
+  const handleRedo = useCallback(() => {
+    if (!canvas || !canRedo) return;
+
+    if (historyIndex < drawingHistory.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      canvas.loadFromJSON(drawingHistory[newIndex], () => {
+        canvas.renderAll();
+        generateCanvasDescription();
+      });
+      setCanRedo(newIndex < drawingHistory.length - 1);
+      setCanUndo(true);
+      
+      // Log redo action for Blind Mode
+      logCanvasAction('redo', currentTool);
+    }
+
+    if (screenReader) {
+      announce('Redid last action', 'polite');
+    }
+  }, [canvas, canRedo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
+
+  /**
+   * Handle clear canvas
+   */
+  const handleClearCanvas = useCallback(() => {
+    if (!canvas) return;
+
+    canvas.clear();
+    setDrawingHistory([]);
+    setHistoryIndex(-1);
+    setCanUndo(false);
+    setCanRedo(false);
+    setDrawingDescriptions([]);
+    setDescriptionLog(prev => [...prev, {
+      timestamp: Date.now(),
+      action: 'canvas_cleared',
+      description: 'Canvas cleared',
+      details: []
+    }]);
+
+    // Log clear action for Blind Mode
+    logCanvasAction('clear', currentTool);
+
+    if (screenReader) {
+      announce('Canvas cleared', 'polite');
+    }
+  }, [canvas, screenReader, announce, logCanvasAction, currentTool]);
+
+  /**
+   * Handle save canvas
+   */
+  const handleSaveCanvas = useCallback(() => {
+    if (!canvas) return;
+
+    const canvasState = canvas.toJSON();
+    
+    if (onRoomUpdate) {
+      onRoomUpdate({ canvas: canvasState });
+    }
+
+    if (screenReader) {
+      announce('Canvas saved', 'polite');
+    }
+  }, [canvas, onRoomUpdate, screenReader, announce]);
+
+  /**
+   * Handle undo
+   */
+  const handleUndo = useCallback(() => {
+    if (!canvas || !canUndo) return;
+
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      canvas.loadFromJSON(drawingHistory[newIndex], () => {
+        canvas.renderAll();
+        generateCanvasDescription();
+      });
+      setCanUndo(newIndex > 0);
+      setCanRedo(true);
+      
+      // Log undo action for Blind Mode
+      logCanvasAction('undo', currentTool);
+    }
+
+    if (screenReader) {
+      announce('Undid last action', 'polite');
+    }
+  }, [canvas, canUndo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
+
+  /**
    * Process voice commands
    */
   const processVoiceCommand = useCallback((command) => {
@@ -347,41 +508,6 @@ const CanvasDrawing = ({
     }
   }, [logCanvasAction, currentTool, handleUndo, handleRedo, handleClearCanvas, handleSaveCanvas, announce]);
 
-  /**
-   * Generate textual description of canvas content
-   */
-  const generateCanvasDescription = useCallback(() => {
-    if (!canvas) return;
-
-    const objects = canvas.getObjects();
-    const descriptions = [];
-
-    objects.forEach((obj, index) => {
-      let description = '';
-      
-      if (obj.type === 'rect') {
-        description = `Rectangle ${index + 1}: ${obj.width}x${obj.height} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'circle') {
-        description = `Circle ${index + 1}: radius ${Math.round(obj.radius)} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'line') {
-        description = `Line ${index + 1}: from (${Math.round(obj.x1)}, ${Math.round(obj.y1)}) to (${Math.round(obj.x2)}, ${Math.round(obj.y2)}), color ${obj.stroke}`;
-      } else if (obj.type === 'text') {
-        description = `Text ${index + 1}: "${obj.text}", color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'path') {
-        description = `Drawing ${index + 1}: ${obj.path.length} points, color ${obj.stroke}, width ${obj.strokeWidth}`;
-      } else {
-        description = `Object ${index + 1}: ${obj.type}, color ${obj.fill || obj.stroke}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      }
-      
-      descriptions.push(description);
-    });
-
-    setDrawingDescriptions(descriptions);
-    
-    if (screenReader) {
-      announce(`Canvas updated: ${objects.length} objects`, 'polite');
-    }
-  }, [canvas, screenReader, announce, setDrawingDescriptions]);
 
   /**
    * Initialize Fabric.js canvas
@@ -390,7 +516,7 @@ const CanvasDrawing = ({
     if (!canvasRef.current) return;
 
     // Initialize Fabric.js canvas
-    const fabricCanvas = new window.fabric.Canvas(canvasRef.current, {
+    const fabricCanvas = new fabric.Canvas(canvasRef.current, {
       width: 800,
       height: 600,
       backgroundColor: canvasSettings.backgroundColor,
@@ -708,99 +834,7 @@ const CanvasDrawing = ({
     }
   }, [canvas, screenReader, announce]);
 
-  /**
-   * Handle undo
-   */
-  const handleUndo = useCallback(() => {
-    if (!canvas || !canUndo) return;
 
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      canvas.loadFromJSON(drawingHistory[newIndex], () => {
-        canvas.renderAll();
-        generateCanvasDescription();
-      });
-      setCanUndo(newIndex > 0);
-      setCanRedo(true);
-      
-      // Log undo action for Blind Mode
-      logCanvasAction('undo', currentTool);
-    }
-
-    if (screenReader) {
-      announce('Undid last action', 'polite');
-    }
-  }, [canvas, canUndo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
-
-  /**
-   * Handle redo
-   */
-  const handleRedo = useCallback(() => {
-    if (!canvas || !canRedo) return;
-
-    if (historyIndex < drawingHistory.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      canvas.loadFromJSON(drawingHistory[newIndex], () => {
-        canvas.renderAll();
-        generateCanvasDescription();
-      });
-      setCanRedo(newIndex < drawingHistory.length - 1);
-      setCanUndo(true);
-      
-      // Log redo action for Blind Mode
-      logCanvasAction('redo', currentTool);
-    }
-
-    if (screenReader) {
-      announce('Redid last action', 'polite');
-    }
-  }, [canvas, canRedo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
-
-  /**
-   * Handle clear canvas
-   */
-  const handleClearCanvas = useCallback(() => {
-    if (!canvas) return;
-
-    canvas.clear();
-    setDrawingHistory([]);
-    setHistoryIndex(-1);
-    setCanUndo(false);
-    setCanRedo(false);
-    setDrawingDescriptions([]);
-    setDescriptionLog(prev => [...prev, {
-      timestamp: Date.now(),
-      action: 'canvas_cleared',
-      description: 'Canvas cleared',
-      details: []
-    }]);
-
-    // Log clear action for Blind Mode
-    logCanvasAction('clear', currentTool);
-
-    if (screenReader) {
-      announce('Canvas cleared', 'polite');
-    }
-  }, [canvas, screenReader, announce, logCanvasAction, currentTool]);
-
-  /**
-   * Handle save canvas
-   */
-  const handleSaveCanvas = useCallback(() => {
-    if (!canvas) return;
-
-    const canvasState = canvas.toJSON();
-    
-    if (onRoomUpdate) {
-      onRoomUpdate({ canvas: canvasState });
-    }
-
-    if (screenReader) {
-      announce('Canvas saved', 'polite');
-    }
-  }, [canvas, onRoomUpdate, screenReader, announce]);
 
   /**
    * Handle keyboard shortcuts

@@ -9,7 +9,7 @@
  * - Notification settings
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
@@ -112,11 +112,11 @@ const UserSettings = ({ onClose }) => {
   };
 
   // Handle keyboard navigation
-  const handleKeyDown = (e) => {
+  const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
       onClose();
     }
-  };
+  }, [onClose]);
 
   // Set up keyboard navigation
   React.useEffect(() => {

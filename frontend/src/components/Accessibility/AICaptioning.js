@@ -152,8 +152,8 @@ const AICaptioning = ({
     }
 
     // Convert data URL to blob
-    const response = await fetch(imageDataUrl);
-    const blob = await response.blob();
+    const imageResponse = await fetch(imageDataUrl);
+    const blob = await imageResponse.blob();
 
     // Prepare request based on service
     let requestOptions = {
@@ -255,6 +255,10 @@ const AICaptioning = ({
             confidence: response.confidence || 0.8
           };
         }
+        break;
+      
+      default:
+        // Unknown service
         break;
     }
 

@@ -48,7 +48,7 @@ const CodeEditor = ({ onCodeChange, participants }) => {
   const [changeHistory, setChangeHistory] = useState([]);
   const [currentFile, setCurrentFile] = useState('main.js');
 
-  // Refs
+  // Refs with proper cleanup
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -56,10 +56,46 @@ const CodeEditor = ({ onCodeChange, participants }) => {
   const isLocalChangeRef = useRef(false);
   const previousContentRef = useRef(codeContent || '');
   const changeAnnouncementRef = useRef(null);
+  const cleanupRefs = useRef([]);
 
   // Debounce delay for sending changes (ms)
   const DEBOUNCE_DELAY = 300;
   const TYPING_INDICATOR_DELAY = 1000;
+
+  // Cleanup function to prevent memory leaks
+  const cleanup = useCallback(() => {
+    // Clear all timeouts
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (changeAnnouncementRef.current) {
+      clearTimeout(changeAnnouncementRef.current);
+      changeAnnouncementRef.current = null;
+    }
+    
+    // Clear all cleanup refs
+    cleanupRefs.current.forEach(cleanup => {
+      if (cleanup) {
+        cleanup();
+      }
+    });
+    cleanupRefs.current = [];
+    
+    // Dispose Monaco editor
+    if (editorRef.current) {
+      editorRef.current.dispose();
+      editorRef.current = null;
+    }
+    if (monacoRef.current) {
+      monacoRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
 
   /**
    * Analyze code changes for Blind Mode announcements
@@ -389,7 +425,7 @@ const CodeEditor = ({ onCodeChange, participants }) => {
         }
       }
     }
-  }, [codeContent, localContent, screenReader, announce, blindModeEnabled, analyzeCodeChange, announceCodeChange, codeMetadata]);
+  }, [codeContent, screenReader, announce, blindModeEnabled, analyzeCodeChange, announceCodeChange, codeMetadata]);
 
   /**
    * Handle language changes from other users

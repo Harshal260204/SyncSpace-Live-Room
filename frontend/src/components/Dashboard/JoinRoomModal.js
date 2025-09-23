@@ -8,7 +8,7 @@
  * - Accessibility features
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 
 /**
@@ -89,11 +89,11 @@ const JoinRoomModal = ({ onClose, onJoinRoom }) => {
   };
 
   // Handle keyboard navigation
-  const handleKeyDown = (e) => {
+  const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
       onClose();
     }
-  };
+  }, [onClose]);
 
   // Set up keyboard navigation
   React.useEffect(() => {

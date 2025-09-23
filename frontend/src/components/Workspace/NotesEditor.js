@@ -35,7 +35,6 @@ const NotesEditor = ({
 
   // Editor state
   const [content, setContent] = useState(roomData?.notes || '');
-  const [isEditing, setIsEditing] = useState(false);
   const [lastSaved, setLastSaved] = useState(Date.now());
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -53,7 +52,6 @@ const NotesEditor = ({
 
   // User presence and cursor tracking
   const [userCursors, setUserCursors] = useState({});
-  const [userSelections, setUserSelections] = useState({});
   const [typingUsers, setTypingUsers] = useState({});
 
   // Concurrent editing state
@@ -62,20 +60,48 @@ const NotesEditor = ({
   
   // Blind Mode state
   const [lastNoteUpdate, setLastNoteUpdate] = useState(null);
-  const [noteChangeHistory, setNoteChangeHistory] = useState([]);
   const [currentAnnouncement, setCurrentAnnouncement] = useState(null);
 
-  // Refs
+  // Refs with proper cleanup
   const editorRef = useRef(null);
   const changeTimeoutRef = useRef(null);
   const saveTimeoutRef = useRef(null);
   const announcementTimeoutRef = useRef(null);
   const previousContentRef = useRef(roomData?.notes || '');
+  const cleanupRefs = useRef([]);
 
   // Debounce settings
   const CHANGE_DEBOUNCE_MS = 300;
-  const SAVE_DEBOUNCE_MS = 1000;
-  const BATCH_UPDATE_MS = 100;
+
+  // Cleanup function to prevent memory leaks
+  const cleanup = useCallback(() => {
+    // Clear all timeouts
+    if (changeTimeoutRef.current) {
+      clearTimeout(changeTimeoutRef.current);
+      changeTimeoutRef.current = null;
+    }
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    if (announcementTimeoutRef.current) {
+      clearTimeout(announcementTimeoutRef.current);
+      announcementTimeoutRef.current = null;
+    }
+    
+    // Clear all cleanup refs
+    cleanupRefs.current.forEach(cleanup => {
+      if (cleanup) {
+        cleanup();
+      }
+    });
+    cleanupRefs.current = [];
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
 
   /**
    * Analyze note changes for Blind Mode announcements
@@ -157,8 +183,7 @@ const NotesEditor = ({
     // Announce the change
     announceToScreenReader(changeAnalysis.announcement);
     
-    // Update change history
-    setNoteChangeHistory(prev => [...prev.slice(-9), changeAnalysis]);
+    // Update last note update
     setLastNoteUpdate(changeAnalysis);
     
     // Clear announcement after a delay
@@ -176,7 +201,7 @@ const NotesEditor = ({
       setHasUnsavedChanges(false);
       previousContentRef.current = roomData.notes;
     }
-  }, [roomData?.notes, content]);
+  }, [roomData?.notes]);
 
   /**
    * Handle external content changes from other users
@@ -218,6 +243,37 @@ const NotesEditor = ({
       }
     };
   }, []);
+
+  /**
+   * Process batched changes to reduce network traffic
+   */
+  const processBatchedChanges = useCallback(() => {
+    if (isProcessingChanges || changeQueue.length === 0) return;
+
+    setIsProcessingChanges(true);
+
+    // Get all pending changes
+    const changes = [...changeQueue];
+    setChangeQueue([]);
+
+    // Send batched changes
+    if (connected && sendEvent) {
+      sendEvent('note-change', {
+        roomId,
+        changes,
+        metadata: {
+          userId: user?.userId,
+          username: user?.username,
+          timestamp: Date.now()
+        }
+      });
+    }
+
+    // Reset processing state
+    setTimeout(() => {
+      setIsProcessingChanges(false);
+    }, 100);
+  }, [isProcessingChanges, changeQueue, connected, sendEvent, roomId, user]);
 
   /**
    * Handle content changes with debouncing and batching
@@ -265,33 +321,6 @@ const NotesEditor = ({
   }, [user, isProcessingChanges, processBatchedChanges, blindModeEnabled, analyzeNoteChange, announceNoteChange]);
 
   /**
-   * Process batched changes to reduce network traffic
-   */
-  const processBatchedChanges = useCallback(() => {
-    if (isProcessingChanges || changeQueue.length === 0) return;
-
-    setIsProcessingChanges(true);
-
-    // Get all pending changes
-    const changes = [...changeQueue];
-    setChangeQueue([]);
-
-    // Send batched changes
-    if (connected && sendEvent) {
-      sendEvent('notes-change', {
-        roomId,
-        changes,
-        timestamp: Date.now()
-      });
-    }
-
-    // Clear change queue after processing
-    setTimeout(() => {
-      setIsProcessingChanges(false);
-    }, BATCH_UPDATE_MS);
-  }, [isProcessingChanges, changeQueue, connected, sendEvent, roomId]);
-
-  /**
    * Handle cursor position changes
    */
   const handleCursorChange = useCallback((position) => {
@@ -332,11 +361,7 @@ const NotesEditor = ({
       timestamp: Date.now()
     };
 
-    // Update local selection
-    setUserSelections(prev => ({
-      ...prev,
-      [user.userId]: selectionData
-    }));
+    // Note: User selections tracking removed for simplicity
 
     // Send selection update
     if (sendEvent) {
@@ -492,6 +517,36 @@ const NotesEditor = ({
   }, [handleContentChange, screenReader, announce]);
 
   /**
+   * Handle save
+   */
+  const handleSave = useCallback(() => {
+    if (isSaving || !hasUnsavedChanges) return;
+
+    setIsSaving(true);
+
+    // Clear existing save timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce save
+    saveTimeoutRef.current = setTimeout(() => {
+      if (onRoomUpdate) {
+        onRoomUpdate({ notes: content });
+      }
+
+      setHasUnsavedChanges(false);
+      setLastSaved(Date.now());
+      setIsSaving(false);
+
+      // Announce save completion
+      if (screenReader) {
+        announce('Notes saved successfully', 'polite');
+      }
+    }, 1000);
+  }, [isSaving, hasUnsavedChanges, content, onRoomUpdate, screenReader, announce]);
+
+  /**
    * Handle keyboard navigation
    */
   const handleKeyDown = useCallback((event) => {
@@ -538,7 +593,7 @@ const NotesEditor = ({
     if (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete') {
       handleTypingStart();
     }
-  }, [keyboardNavigation, applyFormatting, handleTypingStart, blindModeEnabled, lastNoteUpdate, announceToScreenReader]);
+  }, [keyboardNavigation, applyFormatting, handleTypingStart, blindModeEnabled, lastNoteUpdate, announceToScreenReader, handleSave]);
 
   /**
    * Handle keyboard up
@@ -549,47 +604,17 @@ const NotesEditor = ({
     }
   }, [handleTypingStop]);
 
-  /**
-   * Handle save
-   */
-  const handleSave = useCallback(() => {
-    if (isSaving || !hasUnsavedChanges) return;
-
-    setIsSaving(true);
-
-    // Clear existing save timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Debounce save
-    saveTimeoutRef.current = setTimeout(() => {
-      if (onRoomUpdate) {
-        onRoomUpdate({ notes: content });
-      }
-
-      setHasUnsavedChanges(false);
-      setIsSaving(false);
-      setLastSaved(Date.now());
-
-      if (screenReader) {
-        announce('Notes saved', 'polite');
-      }
-    }, SAVE_DEBOUNCE_MS);
-  }, [isSaving, hasUnsavedChanges, content, onRoomUpdate, screenReader, announce, handleSave]);
 
   /**
    * Handle focus events
    */
   const handleFocus = useCallback(() => {
-    setIsEditing(true);
     if (screenReader) {
       announce('Notes editor focused', 'polite');
     }
   }, [screenReader, announce]);
 
   const handleBlur = useCallback(() => {
-    setIsEditing(false);
     handleTypingStop();
     if (screenReader) {
       announce('Notes editor focus lost', 'polite');

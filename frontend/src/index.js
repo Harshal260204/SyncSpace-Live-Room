@@ -9,7 +9,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { ReactAnnouncer } from 'react-announcer';
+// Removed react-announcer - using custom accessibility announcements instead
 
 // Import context providers
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -73,7 +73,7 @@ root.render(
               />
               
               {/* Screen reader announcements */}
-              <ReactAnnouncer />
+              {/* Custom accessibility announcements handled by contexts */}
             </SocketProvider>
           </UserProvider>
           </BlindModeProvider>

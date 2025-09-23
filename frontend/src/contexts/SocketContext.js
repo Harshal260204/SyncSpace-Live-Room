@@ -5,7 +5,7 @@
  * event management, and real-time collaboration features
  */
 
-import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
@@ -148,13 +148,214 @@ export const SocketProvider = ({ children }) => {
   const socketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttempts = useRef(0);
+  const cleanupRefs = useRef([]);
   const maxReconnectAttempts = 5;
+
+  // Cleanup function to prevent memory leaks
+  const cleanup = useCallback(() => {
+    // Clear all timeouts
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    // Clear all cleanup refs
+    cleanupRefs.current.forEach(cleanup => {
+      if (cleanup) {
+        cleanup();
+      }
+    });
+    cleanupRefs.current = [];
+    
+    // Remove all socket event listeners and disconnect
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    
+    // Reset state
+    dispatch({ type: 'DISCONNECT' });
+  }, []);
+
+  // Attach event handlers to socket
+  const attachEventHandlers = useCallback(() => {
+    if (!socketRef.current) return;
+
+    // Connection event handlers
+    socketRef.current.on('connect', () => {
+      console.log('Socket connected successfully');
+      dispatch({ type: 'CONNECT' });
+      reconnectAttempts.current = 0;
+      
+      // Clear any existing reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+    });
+
+    socketRef.current.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      dispatch({ type: 'DISCONNECT' });
+      
+      // Show reconnection message for unexpected disconnections
+      if (reason !== 'io client disconnect') {
+        toast.error('Connection lost. Attempting to reconnect...');
+      }
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      dispatch({
+        type: 'SET_ERROR',
+        payload: error.message || 'Failed to connect to server',
+      });
+      
+      reconnectAttempts.current++;
+      
+      if (reconnectAttempts.current >= maxReconnectAttempts) {
+        toast.error('Unable to connect to server. Please check your connection and try refreshing the page.');
+      }
+    });
+
+    // Room event handlers
+    socketRef.current.on('roomJoined', (data) => {
+      console.log('🎉 roomJoined event received:', data);
+      dispatch({ type: 'SET_ROOM', payload: data.roomId });
+      dispatch({ type: 'SET_ROOM_DATA', payload: data });
+      
+      // Update participants
+      if (data.participants) {
+        data.participants.forEach(participant => {
+          dispatch({
+            type: 'ADD_PARTICIPANT',
+            payload: participant,
+          });
+        });
+      }
+      
+      // Update collaboration content
+      if (data.codeContent) {
+        dispatch({
+          type: 'SET_CODE_CONTENT',
+          payload: {
+            content: data.codeContent,
+            language: data.codeLanguage || 'javascript',
+          },
+        });
+      }
+      
+      if (data.notesContent) {
+        dispatch({ type: 'SET_NOTES_CONTENT', payload: data.notesContent });
+      }
+      
+      if (data.canvasData) {
+        dispatch({ type: 'SET_CANVAS_DATA', payload: data.canvasData });
+      }
+      
+      toast.success(`Joined room: ${data.roomName}`);
+    });
+
+    socketRef.current.on('userJoined', (data) => {
+      dispatch({
+        type: 'ADD_PARTICIPANT',
+        payload: data,
+      });
+      
+      toast.success(`${data.username} joined the room`);
+    });
+
+    socketRef.current.on('userLeft', (data) => {
+      dispatch({
+        type: 'REMOVE_PARTICIPANT',
+        payload: { userId: data.userId },
+      });
+      
+      toast.success(`${data.username} left the room`);
+    });
+
+    socketRef.current.on('userDisconnected', (data) => {
+      dispatch({
+        type: 'REMOVE_PARTICIPANT',
+        payload: { userId: data.userId },
+      });
+      
+      toast.success(`${data.username} disconnected`);
+    });
+
+    // Collaboration event handlers
+    socketRef.current.on('code-changed', (data) => {
+      dispatch({
+        type: 'SET_CODE_CONTENT',
+        payload: {
+          content: data.content,
+          language: data.language,
+          metadata: data.metadata, // Include metadata for Blind Mode
+        },
+      });
+    });
+
+    socketRef.current.on('note-changed', (data) => {
+      dispatch({
+        type: 'SET_NOTES_CONTENT',
+        payload: {
+          content: data.content,
+          metadata: data.metadata, // Include metadata for Blind Mode
+        },
+      });
+    });
+
+    socketRef.current.on('drawing-updated', (data) => {
+      dispatch({
+        type: 'SET_CANVAS_DATA',
+        payload: data.drawingData,
+      });
+    });
+
+    socketRef.current.on('chat-message', (data) => {
+      dispatch({
+        type: 'ADD_CHAT_MESSAGE',
+        payload: data,
+      });
+    });
+
+    socketRef.current.on('chatHistory', (messages) => {
+      dispatch({
+        type: 'CLEAR_CHAT_MESSAGES',
+      });
+      messages.forEach(message => {
+        dispatch({
+          type: 'ADD_CHAT_MESSAGE',
+          payload: message,
+        });
+      });
+    });
+
+    socketRef.current.on('presence-updated', (data) => {
+      dispatch({
+        type: 'UPDATE_PARTICIPANT',
+        payload: data,
+      });
+    });
+
+    // Error handling
+    socketRef.current.on('error', (error) => {
+      toast.error(error.message || 'An error occurred');
+    });
+
+    // Pong response for health checks
+    socketRef.current.on('pong', (data) => {
+      // Health check response received
+    });
+  }, [dispatch]);
 
   // Initialize socket connection
   useEffect(() => {
     const initializeSocket = () => {
       try {
         const serverUrl = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
+        console.log('Connecting to server:', serverUrl);
         
         socketRef.current = io(serverUrl, {
           transports: ['websocket', 'polling'],
@@ -165,186 +366,10 @@ export const SocketProvider = ({ children }) => {
           reconnectionDelayMax: 5000,
         });
 
-        // Connection event handlers
-        socketRef.current.on('connect', () => {
-          console.log('🔌 Socket connected');
-          dispatch({ type: 'CONNECT' });
-          reconnectAttempts.current = 0;
-          
-          // Clear any existing reconnect timeout
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = null;
-          }
-        });
-
-        socketRef.current.on('disconnect', (reason) => {
-          console.log('🔌 Socket disconnected:', reason);
-          dispatch({ type: 'DISCONNECT' });
-          
-          // Show reconnection message for unexpected disconnections
-          if (reason !== 'io client disconnect') {
-            toast.error('Connection lost. Attempting to reconnect...');
-          }
-        });
-
-        socketRef.current.on('connect_error', (error) => {
-          console.error('❌ Socket connection error:', error);
-          dispatch({
-            type: 'SET_ERROR',
-            payload: 'Failed to connect to server',
-          });
-          
-          reconnectAttempts.current++;
-          
-          if (reconnectAttempts.current >= maxReconnectAttempts) {
-            toast.error('Unable to connect to server. Please check your connection.');
-          }
-        });
-
-        // Room event handlers
-        socketRef.current.on('roomJoined', (data) => {
-          console.log('🏠 Joined room:', data.roomId);
-          dispatch({ type: 'SET_ROOM', payload: data.roomId });
-          dispatch({ type: 'SET_ROOM_DATA', payload: data });
-          
-          // Update participants
-          if (data.participants) {
-            data.participants.forEach(participant => {
-              dispatch({
-                type: 'ADD_PARTICIPANT',
-                payload: participant,
-              });
-            });
-          }
-          
-          // Update collaboration content
-          if (data.codeContent) {
-            dispatch({
-              type: 'SET_CODE_CONTENT',
-              payload: {
-                content: data.codeContent,
-                language: data.codeLanguage || 'javascript',
-              },
-            });
-          }
-          
-          if (data.notesContent) {
-            dispatch({ type: 'SET_NOTES_CONTENT', payload: data.notesContent });
-          }
-          
-          if (data.canvasData) {
-            dispatch({ type: 'SET_CANVAS_DATA', payload: data.canvasData });
-          }
-          
-          toast.success(`Joined room: ${data.roomName}`);
-        });
-
-        socketRef.current.on('userJoined', (data) => {
-          console.log('👤 User joined:', data.username);
-          dispatch({
-            type: 'ADD_PARTICIPANT',
-            payload: data,
-          });
-          
-          toast.success(`${data.username} joined the room`);
-        });
-
-        socketRef.current.on('userLeft', (data) => {
-          console.log('👋 User left:', data.username);
-          dispatch({
-            type: 'REMOVE_PARTICIPANT',
-            payload: { userId: data.userId },
-          });
-          
-          toast.success(`${data.username} left the room`);
-        });
-
-        socketRef.current.on('userDisconnected', (data) => {
-          console.log('🔌 User disconnected:', data.username);
-          dispatch({
-            type: 'REMOVE_PARTICIPANT',
-            payload: { userId: data.userId },
-          });
-          
-          toast.success(`${data.username} disconnected`);
-        });
-
-        // Collaboration event handlers
-        socketRef.current.on('code-changed', (data) => {
-          console.log('📝 Code changed by:', data.username);
-          console.log('📝 Code change metadata:', data.metadata);
-          dispatch({
-            type: 'SET_CODE_CONTENT',
-            payload: {
-              content: data.content,
-              language: data.language,
-              metadata: data.metadata, // Include metadata for Blind Mode
-            },
-          });
-        });
-
-        socketRef.current.on('note-changed', (data) => {
-          console.log('📝 Notes changed by:', data.username);
-          console.log('📝 Notes change metadata:', data.metadata);
-          dispatch({
-            type: 'SET_NOTES_CONTENT',
-            payload: {
-              content: data.content,
-              metadata: data.metadata, // Include metadata for Blind Mode
-            },
-          });
-        });
-
-        socketRef.current.on('drawing-updated', (data) => {
-          console.log('🎨 Drawing updated by:', data.username);
-          dispatch({
-            type: 'SET_CANVAS_DATA',
-            payload: data.drawingData,
-          });
-        });
-
-        socketRef.current.on('chat-message', (data) => {
-          console.log('💬 Chat message from:', data.username);
-          dispatch({
-            type: 'ADD_CHAT_MESSAGE',
-            payload: data,
-          });
-        });
-
-        socketRef.current.on('chatHistory', (messages) => {
-          console.log('💬 Chat history loaded:', messages.length, 'messages');
-          dispatch({
-            type: 'CLEAR_CHAT_MESSAGES',
-          });
-          messages.forEach(message => {
-            dispatch({
-              type: 'ADD_CHAT_MESSAGE',
-              payload: message,
-            });
-          });
-        });
-
-        socketRef.current.on('presence-updated', (data) => {
-          dispatch({
-            type: 'UPDATE_PARTICIPANT',
-            payload: data,
-          });
-        });
-
-        // Error handling
-        socketRef.current.on('error', (error) => {
-          console.error('❌ Socket error:', error);
-          toast.error(error.message || 'An error occurred');
-        });
-
-        // Pong response for health checks
-        socketRef.current.on('pong', (data) => {
-          console.log('🏓 Pong received:', data.timestamp);
-        });
+        // Attach event handlers
+        attachEventHandlers();
 
       } catch (error) {
-        console.error('❌ Error initializing socket:', error);
         dispatch({
           type: 'SET_ERROR',
           payload: 'Failed to initialize connection',
@@ -355,56 +380,65 @@ export const SocketProvider = ({ children }) => {
     initializeSocket();
 
     // Cleanup on unmount
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
-      
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-    };
-  }, []);
+    return cleanup;
+  }, [attachEventHandlers, cleanup]);
 
   // Socket connection methods
-  const connect = () => {
-    if (socketRef.current && !state.connected) {
+  const connect = useCallback(() => {
+    if (!socketRef.current) {
+      // Reinitialize socket if it doesn't exist
+      const serverUrl = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
+      socketRef.current = io(serverUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+        reconnection: true,
+        reconnectionAttempts: maxReconnectAttempts,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+      });
+      
+      // Re-attach event handlers
+      attachEventHandlers();
+    }
+    
+    if (!state.connected && !state.connecting) {
       dispatch({ type: 'CONNECTING' });
       socketRef.current.connect();
     }
-  };
+  }, [state.connected, state.connecting, attachEventHandlers]);
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     if (socketRef.current) {
       socketRef.current.disconnect();
     }
-  };
+  }, []);
 
   // Room management methods
-  const joinRoom = (roomId, username, preferences = {}) => {
+  const joinRoom = useCallback((roomId, username, preferences = {}) => {
+    console.log('📡 joinRoom called:', { roomId, username, connected: state.connected, socketExists: !!socketRef.current });
     if (socketRef.current && state.connected) {
       socketRef.current.emit('joinRoom', {
         roomId,
         username,
         preferences,
       });
+      console.log('📡 joinRoom event emitted');
     } else {
+      console.log('❌ Cannot join room - not connected or socket not available');
       toast.error('Not connected to server');
     }
-  };
+  }, [state.connected]);
 
-  const leaveRoom = () => {
+  const leaveRoom = useCallback(() => {
     if (socketRef.current && state.currentRoom) {
       socketRef.current.emit('leaveRoom');
       dispatch({ type: 'CLEAR_ROOM' });
       dispatch({ type: 'CLEAR_CHAT_MESSAGES' });
     }
-  };
+  }, [state.currentRoom]);
 
   // Collaboration methods
-  const sendCodeChange = (content, language, cursorPosition) => {
+  const sendCodeChange = useCallback((content, language, cursorPosition) => {
     if (socketRef.current && state.currentRoom) {
       socketRef.current.emit('code-change', {
         content,
@@ -412,49 +446,49 @@ export const SocketProvider = ({ children }) => {
         cursorPosition,
       });
     }
-  };
+  }, [state.currentRoom]);
 
-  const sendNoteChange = (content) => {
+  const sendNoteChange = useCallback((content) => {
     if (socketRef.current && state.currentRoom) {
       socketRef.current.emit('note-change', {
         content,
       });
     }
-  };
+  }, [state.currentRoom]);
 
-  const sendDrawingEvent = (drawingData, action) => {
+  const sendDrawingEvent = useCallback((drawingData, action) => {
     if (socketRef.current && state.currentRoom) {
       socketRef.current.emit('draw-event', {
         drawingData,
         action,
       });
     }
-  };
+  }, [state.currentRoom]);
 
-  const sendChatMessage = (message, messageType = 'text') => {
+  const sendChatMessage = useCallback((message, messageType = 'text') => {
     if (socketRef.current && state.currentRoom) {
       socketRef.current.emit('chat-message', {
         message,
         messageType,
       });
     }
-  };
+  }, [state.currentRoom]);
 
-  const sendPresenceUpdate = (cursorPosition, isActive = true) => {
+  const sendPresenceUpdate = useCallback((cursorPosition, isActive = true) => {
     if (socketRef.current && state.currentRoom) {
       socketRef.current.emit('presence-update', {
         cursorPosition,
         isActive,
       });
     }
-  };
+  }, [state.currentRoom]);
 
   // Health check
-  const ping = () => {
+  const ping = useCallback(() => {
     if (socketRef.current && state.connected) {
       socketRef.current.emit('ping');
     }
-  };
+  }, [state.connected]);
 
   // Socket context value
   const value = {

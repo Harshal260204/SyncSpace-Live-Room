@@ -9,7 +9,7 @@
  * - Layout persistence and customization
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 
@@ -64,11 +64,8 @@ const WorkspaceLayout = ({
   });
 
   // Local state
-  const [isFocused, setIsFocused] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const [resizeData, setResizeData] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragData, setDragData] = useState(null);
 
   // Refs
   const layoutRef = useRef(null);
@@ -82,7 +79,6 @@ const WorkspaceLayout = ({
     if (!component || !component.visible) return { display: 'none' };
 
     const { x, y, width, height } = component;
-    const { columns, rows, gap } = layout.grid;
 
     return {
       gridColumn: `${x + 1} / ${x + width + 1}`,
@@ -92,31 +88,6 @@ const WorkspaceLayout = ({
     };
   };
 
-  /**
-   * Handle component resize
-   */
-  const handleResizeStart = useCallback((componentId, direction, event) => {
-    event.preventDefault();
-    setIsResizing(true);
-    setResizeData({ componentId, direction, startX: event.clientX, startY: event.clientY });
-    
-    if (screenReader) {
-      announce(`Resizing ${componentId}`, 'polite');
-    }
-  }, [screenReader, announce]);
-
-  /**
-   * Handle component drag
-   */
-  const handleDragStart = useCallback((componentId, event) => {
-    event.preventDefault();
-    setIsDragging(true);
-    setDragData({ componentId, startX: event.clientX, startY: event.clientY });
-    
-    if (screenReader) {
-      announce(`Dragging ${componentId}`, 'polite');
-    }
-  }, [screenReader, announce]);
 
   /**
    * Handle layout mode change
@@ -140,32 +111,12 @@ const WorkspaceLayout = ({
     }
   }, [screenReader, announce]);
 
-  /**
-   * Handle component visibility toggle
-   */
-  const handleComponentToggle = useCallback((componentId) => {
-    setLayout(prev => ({
-      ...prev,
-      components: {
-        ...prev.components,
-        [componentId]: {
-          ...prev.components[componentId],
-          visible: !prev.components[componentId].visible
-        }
-      }
-    }));
-    
-    if (screenReader) {
-      const component = layout.components[componentId];
-      announce(`${componentId} ${component.visible ? 'hidden' : 'shown'}`, 'polite');
-    }
-  }, [layout.components, screenReader, announce]);
 
   /**
    * Handle keyboard navigation
    */
   const handleKeyDown = useCallback((event) => {
-    if (!keyboardNavigation || !isFocused) return;
+    if (!keyboardNavigation) return;
 
     switch (event.key) {
       case '1':
@@ -187,32 +138,17 @@ const WorkspaceLayout = ({
         event.preventDefault();
         if (isResizing) {
           setIsResizing(false);
-          setResizeData(null);
         }
         if (isDragging) {
           setIsDragging(false);
-          setDragData(null);
         }
         break;
+      default:
+        // No action needed for other keys
+        break;
     }
-  }, [keyboardNavigation, isFocused, handleLayoutModeChange, isResizing, isDragging]);
+  }, [keyboardNavigation, handleLayoutModeChange, isResizing, isDragging]);
 
-  /**
-   * Handle focus events
-   */
-  const handleFocus = useCallback(() => {
-    setIsFocused(true);
-    if (screenReader) {
-      announce('Workspace layout focused', 'polite');
-    }
-  }, [screenReader, announce]);
-
-  const handleBlur = useCallback(() => {
-    setIsFocused(false);
-    if (screenReader) {
-      announce('Workspace layout focus lost', 'polite');
-    }
-  }, [screenReader, announce]);
 
   /**
    * Get layout status for screen readers
@@ -389,10 +325,6 @@ const WorkspaceLayout = ({
       <div 
         ref={layoutRef}
         className="flex-1 overflow-hidden"
-        tabIndex={0}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
         role="main"
         aria-label="Workspace content"
         aria-describedby="workspace-help"

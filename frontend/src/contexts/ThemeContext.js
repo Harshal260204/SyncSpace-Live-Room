@@ -75,7 +75,7 @@ const themeReducer = (state, action) => {
 
 // Initial theme state
 const initialState = {
-  theme: 'light', // 'light', 'dark', 'auto'
+  theme: 'dark', // 'light', 'dark', 'auto'
   highContrast: false,
   systemTheme: 'light', // Detected system theme
   glassmorphism: true, // Enable glassmorphism effects
@@ -115,7 +115,7 @@ export const ThemeProvider = ({ children }) => {
         const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         
         // Initialize theme state
-        const theme = savedTheme || 'auto';
+        const theme = savedTheme || 'dark';
         const highContrast = savedHighContrast 
           ? JSON.parse(savedHighContrast) 
           : systemHighContrast;

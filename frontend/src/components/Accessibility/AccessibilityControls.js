@@ -10,7 +10,7 @@
  * - ARIA live regions
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useBlindMode } from '../../contexts/BlindModeContext';
@@ -39,15 +39,12 @@ const AccessibilityControls = ({
   
   const { 
     highContrast, 
-    setHighContrast, 
-    theme, 
-    setTheme 
+    setHighContrast
   } = useTheme();
 
   const { 
     enabled: blindModeEnabled, 
-    toggleBlindMode, 
-    setBlindMode,
+    toggleBlindMode,
     announceToScreenReader 
   } = useBlindMode();
 
@@ -63,13 +60,13 @@ const AccessibilityControls = ({
   const helpRef = useRef(null);
 
   // Font size options
-  const fontSizes = [
+  const fontSizes = useMemo(() => [
     { value: 'small', label: 'Small', size: '0.875rem' },
     { value: 'medium', label: 'Medium', size: '1rem' },
     { value: 'large', label: 'Large', size: '1.125rem' },
     { value: 'xlarge', label: 'Extra Large', size: '1.25rem' },
     { value: 'xxlarge', label: 'XX Large', size: '1.5rem' }
-  ];
+  ], []);
 
   // Keyboard shortcuts configuration
   const keyboardShortcuts = {
@@ -138,10 +135,10 @@ const AccessibilityControls = ({
    */
   const handleHighContrastToggle = useCallback(() => {
     const newHighContrast = !highContrast;
-    setHighContrast(newHighCont);
+    setHighContrast(newHighContrast);
     
     if (onToggleHighContrast) {
-      onToggleHighContrast(newHighCont);
+      onToggleHighContrast(newHighContrast);
     }
 
     // Announce change
@@ -247,84 +244,6 @@ const AccessibilityControls = ({
     }
   }, [blindModeEnabled, toggleBlindMode, announce, announceToScreenReader]);
 
-  /**
-   * Handle keyboard shortcuts
-   */
-  const handleKeyDown = useCallback((event) => {
-    if (!keyboardNavigation) return;
-
-    // Prevent default for our shortcuts
-    if (event.ctrlKey || event.metaKey) {
-      switch (event.key) {
-        case 'h':
-          if (event.shiftKey) {
-            event.preventDefault();
-            handleHighContrastToggle();
-          }
-          break;
-        case '=':
-        case '+':
-          event.preventDefault();
-          const currentIndex = fontSizes.findIndex(fs => fs.value === fontSize);
-          if (currentIndex < fontSizes.length - 1) {
-            handleFontSizeChange(fontSizes[currentIndex + 1].value);
-          }
-          break;
-        case '-':
-          event.preventDefault();
-          const currentIndexMinus = fontSizes.findIndex(fs => fs.value === fontSize);
-          if (currentIndexMinus > 0) {
-            handleFontSizeChange(fontSizes[currentIndexMinus - 1].value);
-          }
-          break;
-        case '0':
-          event.preventDefault();
-          handleFontSizeChange('medium');
-          break;
-        case 's':
-          if (event.shiftKey) {
-            event.preventDefault();
-            handleScreenReaderToggle();
-          }
-          break;
-        case 'k':
-          if (event.shiftKey) {
-            event.preventDefault();
-            handleKeyboardNavigationToggle();
-          }
-          break;
-        case 'b':
-          if (event.shiftKey) {
-            event.preventDefault();
-            handleBlindModeToggle();
-          }
-          break;
-      }
-    }
-
-    // Handle other shortcuts
-    switch (event.key) {
-      case 'F1':
-        event.preventDefault();
-        setShowAccessibilityHelp(!showAccessibilityHelp);
-        break;
-      case 'F2':
-        event.preventDefault();
-        setShowKeyboardShortcuts(!showKeyboardShortcuts);
-        break;
-    }
-  }, [
-    keyboardNavigation, 
-    handleHighContrastToggle, 
-    handleFontSizeChange, 
-    handleScreenReaderToggle, 
-    handleKeyboardNavigationToggle,
-    handleBlindModeToggle,
-    fontSize,
-    fontSizes,
-    showAccessibilityHelp,
-    showKeyboardShortcuts
-  ]);
 
   /**
    * Handle focus management
@@ -359,7 +278,7 @@ const AccessibilityControls = ({
             className="btn btn-sm btn-outline"
             aria-label="Decrease font size"
             title="Decrease font size (Ctrl+-)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             A-
           </button>
@@ -370,7 +289,7 @@ const AccessibilityControls = ({
             onChange={(e) => handleFontSizeChange(e.target.value)}
             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-100"
             aria-label="Select font size"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             {fontSizes.map((fs) => (
               <option key={fs.value} value={fs.value}>
@@ -390,7 +309,7 @@ const AccessibilityControls = ({
             className="btn btn-sm btn-outline"
             aria-label="Increase font size"
             title="Increase font size (Ctrl++)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             A+
           </button>
@@ -415,7 +334,7 @@ const AccessibilityControls = ({
             className={`btn btn-sm ${highContrast ? 'btn-primary' : 'btn-outline'}`}
             aria-label="Toggle high contrast mode"
             title="Toggle high contrast mode (Ctrl+Shift+H)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             {highContrast ? '🔆' : '🌙'}
           </button>
@@ -431,7 +350,7 @@ const AccessibilityControls = ({
             className={`btn btn-sm ${screenReader ? 'btn-primary' : 'btn-outline'}`}
             aria-label="Toggle screen reader mode"
             title="Toggle screen reader mode (Ctrl+Shift+S)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             {screenReader ? '🔊' : '🔇'}
           </button>
@@ -447,7 +366,7 @@ const AccessibilityControls = ({
             className={`btn btn-sm ${keyboardNavigation ? 'btn-primary' : 'btn-outline'}`}
             aria-label="Toggle keyboard navigation"
             title="Toggle keyboard navigation (Ctrl+Shift+K)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             {keyboardNavigation ? '⌨️' : '🖱️'}
           </button>
@@ -463,7 +382,7 @@ const AccessibilityControls = ({
             className={`btn btn-sm ${blindModeEnabled ? 'btn-primary' : 'btn-outline'}`}
             aria-label="Toggle Blind Mode"
             title="Toggle Blind Mode (Ctrl+Shift+B)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             {blindModeEnabled ? '👁️‍🗨️' : '👁️'}
           </button>
@@ -658,8 +577,6 @@ const AccessibilityControls = ({
     <div
       ref={controlsRef}
       className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4"
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
       role="region"
       aria-label="Accessibility controls"
     >
@@ -674,7 +591,7 @@ const AccessibilityControls = ({
             className="btn btn-sm btn-outline"
             aria-label="Show accessibility help"
             title="Show accessibility help (F1)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             ❓ Help
           </button>
@@ -683,7 +600,7 @@ const AccessibilityControls = ({
             className="btn btn-sm btn-outline"
             aria-label="Show keyboard shortcuts"
             title="Show keyboard shortcuts (F2)"
-            onFocus={() => handleFocus(event.target)}
+            onFocus={(e) => handleFocus(e.target)}
           >
             ⌨️ Shortcuts
           </button>
