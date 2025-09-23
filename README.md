@@ -13,7 +13,6 @@
 [![Accessibility](https://img.shields.io/badge/Accessibility-WCAG%202.1%20AA-purple)](https://www.w3.org/WAI/WCAG21/quickref/)
 [![Blind Mode](https://img.shields.io/badge/Blind%20Mode-Enhanced-orange)](https://github.com/yourusername/SyncSpace-Live-Room)
 [![Deployment](https://img.shields.io/badge/Deployment-Ready-brightgreen)](https://render.com)
-[![Modules](https://img.shields.io/badge/Modules-8%20Complete-success)](https://github.com/yourusername/SyncSpace-Live-Room)
 
 </div>
 
@@ -81,7 +80,7 @@ SyncSpace Live Room is a **fully free, open-source, accessible, collaborative re
 ### Project Structure
 ```
 SyncSpace-Live-Room/
-├── liveroom-backend/                    # Module 1: Backend Setup
+├── backend/                            # Backend Server (Express.js + Socket.io)
 │   ├── config/                         # Database configuration
 │   │   └── database.js                 # MongoDB connection with retry logic
 │   ├── models/                         # MongoDB schemas
@@ -101,7 +100,7 @@ SyncSpace-Live-Room/
 │   ├── server.js                       # Main Express server
 │   ├── package.json                    # Dependencies and scripts
 │   └── env.example                     # Environment variables template
-├── frontend/                           # Module 2: Frontend Setup
+├── frontend/                           # Frontend React Application
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Workspace/              # Module 3-6: Workspace Components
@@ -174,12 +173,27 @@ git clone https://github.com/yourusername/SyncSpace-Live-Room.git
 cd SyncSpace-Live-Room
 ```
 
-### 2. Backend Setup
+### 2. Install Dependencies
 ```bash
-cd liveroom-backend
+# Install all dependencies (root, backend, and frontend)
+npm run install:all
 
-# Install dependencies
+# Or install individually:
+# Root dependencies
 npm install
+
+# Backend dependencies
+cd backend
+npm install
+
+# Frontend dependencies
+cd ../frontend
+npm install
+```
+
+### 3. Backend Setup
+```bash
+cd backend
 
 # Copy environment file
 cp env.example .env
@@ -190,21 +204,30 @@ nano .env
 
 **Required Environment Variables:**
 ```bash
-NODE_ENV=development
+# MongoDB Configuration
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority&appName=SyncSpace
+
+# Server Configuration
 PORT=5000
-MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/liveroom?retryWrites=true&w=majority
-CLIENT_URL=http://localhost:3000
-JWT_SECRET=your-super-secure-jwt-secret-key
-JWT_LIFETIME=7d
+NODE_ENV=development
+
+# CORS Configuration
+FRONTEND_URL=http://localhost:3000
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Room Configuration
+ROOM_CLEANUP_INTERVAL=300000
+MAX_ROOM_SIZE=50
+ROOM_IDLE_TIMEOUT=1800000
 ```
 
-### 3. Frontend Setup
+### 4. Frontend Setup
 ```bash
 cd ../frontend
 
-# Install dependencies
-npm install
-
 # Copy environment file
 cp env.example .env
 
@@ -214,16 +237,31 @@ nano .env
 
 **Required Environment Variables:**
 ```bash
+# API Configuration
 REACT_APP_API_URL=http://localhost:5000
 REACT_APP_SOCKET_URL=http://localhost:5000
+
+# Application Configuration
 REACT_APP_APP_NAME=SyncSpace Live Room
 REACT_APP_VERSION=1.0.0
+
+# Build Configuration
+GENERATE_SOURCEMAP=false
+INLINE_RUNTIME_CHUNK=false
 ```
 
-### 4. Start Development Servers
+### 5. Start Development Servers
+
+#### Option 1: Start Both Servers (Recommended)
+```bash
+# From root directory - starts both backend and frontend
+npm run dev
+```
+
+#### Option 2: Start Servers Separately
 ```bash
 # Terminal 1 - Backend
-cd liveroom-backend
+cd backend
 npm run dev
 
 # Terminal 2 - Frontend
@@ -231,31 +269,65 @@ cd frontend
 npm start
 ```
 
-### 5. Access the Application
+#### Option 3: Production Mode
+```bash
+# From root directory
+npm start
+```
+
+### 6. MongoDB Atlas Setup
+
+#### Create MongoDB Atlas Account
+1. Go to [MongoDB Atlas](https://www.mongodb.com/atlas)
+2. Create a free account
+3. Create a new cluster (choose the free M0 tier)
+4. Create a database user with read/write permissions
+5. Whitelist your IP address (or use 0.0.0.0/0 for development)
+
+#### Get Connection String
+1. Click "Connect" on your cluster
+2. Choose "Connect your application"
+3. Copy the connection string
+4. Replace `<password>` with your database user password
+5. Replace `<dbname>` with your database name (e.g., `liveroom`)
+
+#### Update Environment Variables
+```bash
+# In backend/.env file
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/liveroom?retryWrites=true&w=majority&appName=SyncSpace
+```
+
+### 7. Access the Application
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:5000
 - **Health Check**: http://localhost:5000/health
 
-## 📚 Project Modules
+### 8. Verify Installation
+1. **Backend Health Check**: Visit http://localhost:5000/health
+2. **Frontend Load**: Visit http://localhost:3000
+3. **Database Connection**: Check backend console for MongoDB connection success
+4. **Socket Connection**: Check browser console for Socket.io connection
 
-The SyncSpace Live Room project is built in 8 comprehensive modules, each focusing on specific functionality while maintaining accessibility and real-time collaboration as core principles.
+## 📚 Project Architecture
 
-### Module 1: Backend Setup ✅
-**Location**: `liveroom-backend/`
+The SyncSpace Live Room project is built with a modern, accessible architecture focusing on real-time collaboration and comprehensive accessibility support.
+
+### Backend Architecture ✅
+**Location**: `backend/`
 - **Express.js Server** with Socket.io integration
 - **MongoDB Atlas** connection with retry logic
-- **JWT Authentication** for anonymous guest users
+- **Anonymous User System** for guest access
 - **RESTful API** for room and user management
 - **Real-time Events** for collaboration (joinRoom, code-change, note-change, draw-event, chat-message, presence-update)
 - **Security Middleware** (Helmet, CORS, rate limiting, input validation)
 - **Production Ready** with health checks and graceful shutdown
 
-### Module 2: Frontend Setup ✅
+### Frontend Architecture ✅
 **Location**: `frontend/`
 - **React 18 SPA** with React Router
 - **TailwindCSS** with theming (light/dark/auto) and high contrast support
 - **Socket.io Client** with robust connection handling
-- **Context API** for global state management (Theme, Accessibility, User, Socket)
+- **Context API** for global state management (Theme, Accessibility, User, Socket, BlindMode)
 - **Responsive Design** for desktop, tablet, and mobile
 - **PWA Support** with service worker and manifest
 
@@ -338,9 +410,8 @@ The SyncSpace Live Room project is built in 8 comprehensive modules, each focusi
 
 #### Backend (Render.com)
 ```bash
-cd liveroom-backend
-chmod +x deploy/render-deploy.sh
-./deploy/render-deploy.sh
+cd backend
+# Follow the deployment guide in docs/deployment-guide.md
 ```
 
 #### Frontend (Vercel)
@@ -896,25 +967,222 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - ❌ No liability
 - ❌ No warranty
 
-## 🆘 Support
+## 🔧 Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. Backend Connection Issues
+**Problem**: Backend server won't start or MongoDB connection fails
+```bash
+# Check if MongoDB URI is correct
+echo $MONGODB_URI
+
+# Test MongoDB connection
+cd backend
+node -e "require('mongoose').connect(process.env.MONGODB_URI).then(() => console.log('Connected')).catch(console.error)"
+```
+
+**Solutions**:
+- Verify MongoDB Atlas cluster is running
+- Check IP whitelist includes your IP (or 0.0.0.0/0 for development)
+- Ensure database user has read/write permissions
+- Verify connection string format
+
+#### 2. Frontend Build Issues
+**Problem**: React app won't start or build fails
+```bash
+# Clear cache and reinstall
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+
+# Check Node.js version
+node --version  # Should be 18.0.0 or higher
+```
+
+**Solutions**:
+- Ensure Node.js version is 18.0.0 or higher
+- Clear npm cache: `npm cache clean --force`
+- Delete node_modules and package-lock.json, then reinstall
+- Check for port conflicts (3000, 5000)
+
+#### 3. Socket.io Connection Issues
+**Problem**: Real-time features not working
+```bash
+# Check backend logs for Socket.io errors
+cd backend
+npm run dev
+
+# Check frontend console for connection errors
+# Open browser dev tools and look for Socket.io errors
+```
+
+**Solutions**:
+- Verify CORS configuration in backend
+- Check that both servers are running
+- Ensure environment variables are set correctly
+- Check firewall settings
+
+#### 4. Environment Variable Issues
+**Problem**: App not loading or API calls failing
+```bash
+# Check environment files exist
+ls -la backend/.env
+ls -la frontend/.env
+
+# Verify environment variables
+cd backend && cat .env
+cd frontend && cat .env
+```
+
+**Solutions**:
+- Ensure .env files exist in both backend and frontend directories
+- Copy from .env.example if missing
+- Verify all required variables are set
+- Restart servers after changing environment variables
+
+#### 5. Accessibility Features Not Working
+**Problem**: Screen reader support or Blind Mode not functioning
+```bash
+# Check if accessibility contexts are loaded
+# Open browser dev tools and check for JavaScript errors
+```
+
+**Solutions**:
+- Ensure all React contexts are properly initialized
+- Check for JavaScript errors in browser console
+- Verify screen reader is enabled and compatible
+- Test with different browsers (Chrome, Firefox, Safari)
+
+#### 6. Port Already in Use
+**Problem**: Port 3000 or 5000 already in use
+```bash
+# Check what's using the ports
+lsof -i :3000
+lsof -i :5000
+
+# Kill processes using the ports
+kill -9 $(lsof -t -i:3000)
+kill -9 $(lsof -t -i:5000)
+```
+
+**Solutions**:
+- Kill existing processes using the ports
+- Use different ports by setting PORT environment variable
+- Check if other development servers are running
+
+### Debug Commands
+
+#### Backend Debugging
+```bash
+cd backend
+# Run with debug logging
+DEBUG=* npm run dev
+
+# Check MongoDB connection
+node -e "require('./config/database')"
+
+# Test API endpoints
+curl http://localhost:5000/health
+```
+
+#### Frontend Debugging
+```bash
+cd frontend
+# Run with verbose logging
+REACT_APP_DEBUG=true npm start
+
+# Check build
+npm run build
+
+# Test production build locally
+npx serve -s build
+```
+
+#### Database Debugging
+```bash
+# Connect to MongoDB Atlas
+mongosh "mongodb+srv://username:password@cluster.mongodb.net/liveroom"
+
+# Check collections
+show collections
+
+# Check room data
+db.rooms.find()
+```
+
+### Performance Issues
+
+#### Slow Loading
+- Check MongoDB Atlas cluster performance
+- Verify network connection
+- Clear browser cache
+- Check for memory leaks in browser dev tools
+
+#### High Memory Usage
+- Monitor Node.js memory usage
+- Check for memory leaks in Socket.io connections
+- Restart servers periodically in development
 
 ### Getting Help
+
+#### Before Asking for Help
+1. Check this troubleshooting guide
+2. Verify all prerequisites are met
+3. Try the solutions above
+4. Check browser console for errors
+5. Check backend console for errors
+
+#### When Reporting Issues
+Include the following information:
+- Operating System and version
+- Node.js version (`node --version`)
+- npm version (`npm --version`)
+- Browser and version
+- Error messages from console
+- Steps to reproduce the issue
+
+#### Resources
 - **GitHub Issues**: Report bugs and request features
-- **Documentation**: Check the documentation
+- **Documentation**: Check the docs/ folder
 - **Community**: Join community discussions
 - **Email**: Contact the maintainers
 
-### Common Issues
-1. **Connection Issues**: Check MongoDB connection string
-2. **CORS Errors**: Verify CORS configuration
-3. **Build Errors**: Check Node.js version
-4. **Accessibility Issues**: Test with screen readers
+### Quick Fixes
 
-### Troubleshooting
-- Check the [Troubleshooting Guide](docs/troubleshooting.md)
-- Review the [FAQ](docs/faq.md)
-- Search existing issues
-- Create a new issue if needed
+#### Reset Everything
+```bash
+# Stop all processes
+pkill -f node
+
+# Clean install
+rm -rf node_modules package-lock.json
+rm -rf backend/node_modules backend/package-lock.json
+rm -rf frontend/node_modules frontend/package-lock.json
+
+# Reinstall everything
+npm run install:all
+
+# Restart servers
+npm run dev
+```
+
+#### Check System Requirements
+```bash
+# Node.js version
+node --version  # Should be 18.0.0+
+
+# npm version
+npm --version   # Should be 9.0.0+
+
+# Available memory
+free -h  # Linux/Mac
+# or check Task Manager on Windows
+
+# Available disk space
+df -h  # Linux/Mac
+# or check File Explorer on Windows
+```
 
 ## 🗺️ Roadmap
 
@@ -968,26 +1236,66 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ## 📊 Project Status
 
-### Development Status
-- **Backend**: ✅ Complete
-- **Frontend**: ✅ Complete
-- **Accessibility**: ✅ Complete
-- **Blind Mode**: ✅ Complete
-- **Deployment**: ✅ Complete
-- **Documentation**: ✅ Complete
+### Current Implementation Status
+Based on the actual codebase analysis:
 
-### Test Coverage
-- **Backend**: 85%
-- **Frontend**: 80%
-- **Accessibility**: 90%
-- **Blind Mode**: 95%
-- **E2E**: 75%
+#### ✅ **Fully Implemented**
+- **Backend Server**: Express.js with Socket.io, MongoDB integration
+- **Frontend Application**: React 18 with comprehensive component structure
+- **Accessibility Framework**: Multiple contexts (Theme, Accessibility, BlindMode, User, Socket)
+- **Workspace Components**: CodeEditor, NotesEditor, CanvasDrawing, ChatPanel, ActivityFeed
+- **Dashboard System**: Room management, user settings, create/join modals
+- **UI Components**: LoadingSpinner, ErrorBoundary, BlindModeToggle
+- **Build System**: Production-ready build configuration
 
-### Performance
-- **Lighthouse Score**: 95+
-- **Accessibility Score**: 100
-- **Best Practices**: 95+
-- **SEO**: 90+
+#### 🔄 **Partially Implemented**
+- **Deployment Scripts**: Basic deployment scripts exist but need configuration
+- **Documentation**: Comprehensive docs exist but may need updates
+- **Testing**: Test structure exists but coverage needs verification
+
+#### 📋 **Ready for Development**
+- **Database Models**: Room and User schemas are defined
+- **API Routes**: RESTful endpoints for rooms and users
+- **Socket Handlers**: Real-time event handling structure
+- **Middleware**: Validation and security middleware
+- **Environment Configuration**: Complete environment variable setup
+
+### Technical Specifications
+- **Node.js**: 18.0.0+ required
+- **React**: 18.2.0 with modern hooks
+- **Database**: MongoDB Atlas with Mongoose ODM
+- **Real-time**: Socket.io for bidirectional communication
+- **Styling**: TailwindCSS with custom accessibility themes
+- **Build Tools**: Create React App with custom configuration
+
+### Dependencies Analysis
+#### Backend Dependencies (9 packages)
+- **Core**: express, mongoose, socket.io, cors, helmet
+- **Security**: express-rate-limit, express-validator
+- **Utilities**: dotenv, joi, uuid
+
+#### Frontend Dependencies (20+ packages)
+- **Core**: react, react-dom, react-router-dom
+- **UI**: @monaco-editor/react, @headlessui/react, @heroicons/react
+- **Real-time**: socket.io-client
+- **Canvas**: fabric
+- **Styling**: tailwindcss, autoprefixer, postcss
+- **Accessibility**: react-announcer, eslint-plugin-jsx-a11y
+- **Utilities**: uuid, clsx, react-hot-toast
+
+### File Structure Analysis
+- **Backend**: 8 main files + 3 directories (config, models, routes, socket, middleware, utils)
+- **Frontend**: 20+ components across 5 categories (Workspace, Accessibility, Dashboard, Layout, UI)
+- **Contexts**: 5 React contexts for state management
+- **Pages**: 3 main pages (Dashboard, RoomWorkspace, NotFound)
+- **Documentation**: 5 comprehensive guides in docs/ folder
+
+### Performance Metrics
+- **Bundle Size**: Optimized with source map disabled in production
+- **Accessibility**: WCAG 2.1 AA compliance built-in
+- **Real-time**: Socket.io with connection management
+- **Security**: Helmet, CORS, rate limiting implemented
+- **Database**: MongoDB Atlas with connection retry logic
 
 ---
 
