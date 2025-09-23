@@ -140,7 +140,7 @@ const RoomWorkspace = () => {
     console.log('🔄 RoomWorkspace useEffect triggered', { isAuthenticated, connected, roomId, userId: user?.userId, isJoiningRef: isJoiningRef.current });
     
     joinRoomSession();
-  }, [joinRoomSession]);
+  }, [isAuthenticated, connected, roomId, user?.userId]); // Only depend on the actual values, not the function
 
   // Leave room when component unmounts
   useEffect(() => {

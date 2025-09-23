@@ -415,7 +415,14 @@ export const SocketProvider = ({ children }) => {
 
   // Room management methods
   const joinRoom = useCallback((roomId, username, preferences = {}) => {
-    console.log('📡 joinRoom called:', { roomId, username, connected: state.connected, socketExists: !!socketRef.current });
+    console.log('📡 joinRoom called:', { roomId, username, connected: state.connected, socketExists: !!socketRef.current, currentRoom: state.currentRoom });
+    
+    // Prevent duplicate joins to the same room
+    if (state.currentRoom === roomId) {
+      console.log('⏳ Already in this room, skipping duplicate join');
+      return;
+    }
+    
     if (socketRef.current && state.connected) {
       socketRef.current.emit('joinRoom', {
         roomId,
@@ -427,7 +434,7 @@ export const SocketProvider = ({ children }) => {
       console.log('❌ Cannot join room - not connected or socket not available');
       toast.error('Not connected to server');
     }
-  }, [state.connected]);
+  }, [state.connected, state.currentRoom]);
 
   const leaveRoom = useCallback(() => {
     if (socketRef.current && state.currentRoom) {

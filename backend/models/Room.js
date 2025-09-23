@@ -317,14 +317,15 @@ roomSchema.methods.addParticipant = async function(userData) {
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // First, try to update existing participant
+      // First, try to update existing participant by username
       const updateResult = await this.constructor.findOneAndUpdate(
         { 
           _id: this._id,
-          'participants.userId': userData.userId 
+          'participants.username': userData.username 
         },
         {
           $set: {
+            'participants.$.userId': userData.userId,
             'participants.$.socketId': userData.socketId,
             'participants.$.isActive': true,
             'participants.$.lastActivity': new Date(),

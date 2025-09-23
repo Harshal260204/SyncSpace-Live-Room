@@ -192,8 +192,9 @@ const socketHandler = (io) => {
 
         const { roomId, username, preferences = {} } = data;
         
-        // Generate unique userId for this session
-        const userId = uuidv4();
+        // Generate consistent userId based on username for this session
+        // This ensures the same user gets the same ID across reconnections
+        const userId = `user_${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${socket.id}`;
         
         // Validate input data early
         if (!roomId || !username) {
@@ -217,12 +218,24 @@ const socketHandler = (io) => {
         joinKey = `${socket.id}-${roomId}`;
         const connectionState = connectionStates.get(socket.id);
         
-        // Check if user is already in this room
+        // Check if this socket is already in this room
+        const currentConnection = connectionStates.get(socket.id);
+        if (currentConnection && currentConnection.roomId === roomId && currentConnection.joined) {
+          console.log(`⏳ Socket ${socket.id} already in room ${roomId}, skipping duplicate join`);
+          socket.emit('joinRoomResponse', { 
+            success: true, 
+            message: 'Already in room',
+            roomId 
+          });
+          return;
+        }
+        
+        // Check if user with same username is already in this room
         const existingConnection = Array.from(connectionStates.entries())
-          .find(([id, state]) => id !== socket.id && state.userId === userId && state.roomId === roomId);
+          .find(([id, state]) => id !== socket.id && state.username === username && state.roomId === roomId);
         
         if (existingConnection) {
-          console.log(`⚠️ User ${userId} already in room ${roomId}, disconnecting old session`);
+          console.log(`⚠️ User ${username} already in room ${roomId}, disconnecting old session`);
           const [oldSocketId] = existingConnection;
           const oldSocket = io.sockets.sockets.get(oldSocketId);
           if (oldSocket) {
