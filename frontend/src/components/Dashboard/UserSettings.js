@@ -13,6 +13,7 @@ import React, { useState, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAccessibility } from '../../contexts/AccessibilityContext';
+import LogoutModal from '../UI/LogoutModal';
 
 /**
  * User Settings Modal Component
@@ -34,6 +35,9 @@ const UserSettings = ({ onClose }) => {
     setAnnounceChanges,
     announce 
   } = useAccessibility();
+
+  // Local state for logout modal
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Local state for form values
   const [formData, setFormData] = useState({
@@ -353,6 +357,65 @@ const UserSettings = ({ onClose }) => {
               </div>
             </div>
 
+            {/* Account Actions */}
+            <div>
+              <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
+                Account
+              </h3>
+              
+              <div className="space-y-4">
+                {/* User Info */}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center">
+                      <span className="text-lg text-gray-600 dark:text-gray-300">
+                        {user?.username?.charAt(0)?.toUpperCase() || '👤'}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {user?.username || 'Guest User'}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Session ID: {user?.sessionId?.substring(0, 8)}...
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Logout Button */}
+                <div className="p-4 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                        <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                          Sign Out
+                        </h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          End your current session
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        console.log('🔘 Sign Out button clicked');
+                        setShowLogoutModal(true);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                      aria-label="Sign out from current session"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Action Buttons */}
             <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200 dark:border-gray-700">
               <button
@@ -372,6 +435,21 @@ const UserSettings = ({ onClose }) => {
           </form>
         </div>
       </div>
+
+      {/* Logout Modal */}
+      {showLogoutModal && (
+        <LogoutModal onClose={() => {
+          console.log('❌ LogoutModal closing');
+          setShowLogoutModal(false);
+        }} />
+      )}
+      
+      {/* Debug info */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 right-4 bg-black text-white p-2 text-xs rounded">
+          showLogoutModal: {showLogoutModal.toString()}
+        </div>
+      )}
     </div>
   );
 };

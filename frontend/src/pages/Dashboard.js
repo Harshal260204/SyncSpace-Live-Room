@@ -54,14 +54,17 @@ const Dashboard = () => {
 
   // Initialize user if not authenticated
   useEffect(() => {
+    console.log('🔍 Dashboard: Authentication state changed', { isAuthenticated, userLoading, user: !!user });
+    
     if (!isAuthenticated && !userLoading) {
       // Check if there's a saved username
       const savedUsername = localStorage.getItem('liveroom-username');
+      console.log('🔍 Dashboard: Saved username found:', savedUsername);
       if (savedUsername) {
         setUsername(savedUsername);
       }
     }
-  }, [isAuthenticated, userLoading]);
+  }, [isAuthenticated, userLoading, user]);
 
   // Handle user creation
   const handleCreateUser = async (e) => {
@@ -285,6 +288,16 @@ const Dashboard = () => {
                 </div>
 
                 <div className="flex items-center space-x-4">
+                  {/* User info */}
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {user?.username}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Session active
+                    </p>
+                  </div>
+
                   {/* Connection status */}
                   <div className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                     <div 

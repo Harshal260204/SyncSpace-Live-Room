@@ -392,6 +392,23 @@ const RoomWorkspace = () => {
                   >
                     ℹ️
                   </button>
+
+                  {/* User menu */}
+                  <div className="flex items-center space-x-2">
+                    <div className="text-right">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                        {user?.username}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate('/')}
+                      className="btn btn-outline btn-sm"
+                      aria-label="Return to dashboard"
+                      title="Return to dashboard"
+                    >
+                      🏠
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

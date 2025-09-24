@@ -16,7 +16,7 @@ import { useAccessibility } from '../../contexts/AccessibilityContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { useUser } from '../../contexts/UserContext';
 import { useBlindMode } from '../../contexts/BlindModeContext';
-import * as fabric from 'fabric';
+import { fabric } from 'fabric';
 
 /**
  * Canvas Drawing Component
@@ -37,22 +37,18 @@ const CanvasDrawing = ({
 
   // Canvas and drawing state
   const [canvas, setCanvas] = useState(null);
-  const [currentTool, setCurrentTool] = useState('pen');
+  const [currentTool, setCurrentTool] = useState('brush');
   const [currentColor, setCurrentColor] = useState('#000000');
   const [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
   const [currentOpacity] = useState(1);
 
   // Drawing tools configuration
   const [tools] = useState({
-    pen: { name: 'Pen', icon: '✏️', shortcut: 'p' },
     brush: { name: 'Brush', icon: '🖌️', shortcut: 'b' },
     marker: { name: 'Marker', icon: '🖍️', shortcut: 'm' },
     eraser: { name: 'Eraser', icon: '🧹', shortcut: 'e' },
     rectangle: { name: 'Rectangle', icon: '⬜', shortcut: 'r' },
-    circle: { name: 'Circle', icon: '⭕', shortcut: 'c' },
-    line: { name: 'Line', icon: '📏', shortcut: 'l' },
-    text: { name: 'Text', icon: '📝', shortcut: 't' },
-    select: { name: 'Select', icon: '👆', shortcut: 's' }
+    circle: { name: 'Circle', icon: '⭕', shortcut: 'c' }
   });
 
   // Color palette
@@ -108,6 +104,9 @@ const CanvasDrawing = ({
   const isDrawingRef = useRef(false);
   const currentPathRef = useRef([]);
   const cleanupRefs = useRef([]);
+  const shapeStartRef = useRef(null);
+  const activeShapeRef = useRef(null);
+  const fabricInstanceRef = useRef(null);
 
   // Drawing constants
   const MIN_STROKE_WIDTH = 1;
@@ -175,15 +174,9 @@ const CanvasDrawing = ({
           const { radius, x, y } = details;
           const position = getPositionDescription(x, y);
           description = `${author} drew circle radius ${radius} at ${position}`;
-        } else if (tool === 'line') {
-          const { x1, y1, x2, y2 } = details;
-          const startPos = getPositionDescription(x1, y1);
-          const endPos = getPositionDescription(x2, y2);
-          description = `${author} drew line from ${startPos} to ${endPos}`;
-        } else if (tool === 'text') {
-          const { text, x, y } = details;
-          const position = getPositionDescription(x, y);
-          description = `${author} added text "${text}" at ${position}`;
+      } else if (tool === 'text' || tool === 'line') {
+          // Legacy tools removed from UI; keep generic description for backward compatibility
+          description = `${author} updated canvas with ${tool}`;
         }
         break;
         
@@ -409,8 +402,8 @@ const CanvasDrawing = ({
     
     // Tool selection commands
     if (commandLower.includes('pen') || commandLower.includes('pencil')) {
-      setCurrentTool('pen');
-      logCanvasAction('tool_change', 'pen');
+      setCurrentTool('brush');
+      logCanvasAction('tool_change', 'brush');
     } else if (commandLower.includes('brush')) {
       setCurrentTool('brush');
       logCanvasAction('tool_change', 'brush');
@@ -426,15 +419,11 @@ const CanvasDrawing = ({
     } else if (commandLower.includes('circle')) {
       setCurrentTool('circle');
       logCanvasAction('tool_change', 'circle');
-    } else if (commandLower.includes('line')) {
-      setCurrentTool('line');
-      logCanvasAction('tool_change', 'line');
-    } else if (commandLower.includes('text')) {
-      setCurrentTool('text');
-      logCanvasAction('tool_change', 'text');
-    } else if (commandLower.includes('select')) {
-      setCurrentTool('select');
-      logCanvasAction('tool_change', 'select');
+    // Removed tools: line, text, select
+    } else if (commandLower.includes('line') || commandLower.includes('text') || commandLower.includes('select')) {
+      // Ignore or map to closest supported tool
+      setCurrentTool('pen');
+      logCanvasAction('tool_change', 'pen');
     }
     
     // Color commands
@@ -511,44 +500,98 @@ const CanvasDrawing = ({
 
   /**
    * Initialize Fabric.js canvas
+   * Only (re)initialize when room changes to avoid duplicate instances
    */
   useEffect(() => {
-    if (!canvasRef.current) return;
+    let rafId;
 
-    // Initialize Fabric.js canvas
-    const fabricCanvas = new fabric.Canvas(canvasRef.current, {
-      width: 800,
-      height: 600,
-      backgroundColor: canvasSettings.backgroundColor,
-      selection: true,
-      preserveObjectStacking: true,
-      renderOnAddRemove: true,
-      skipTargetFind: false,
-      skipOffscreen: false
-    });
+    const mountCanvas = () => {
+      if (!canvasRef.current) return;
 
-    // Configure canvas settings
-    fabricCanvas.freeDrawingBrush.width = currentStrokeWidth;
-    fabricCanvas.freeDrawingBrush.color = currentColor;
-    fabricCanvas.freeDrawingBrush.opacity = currentOpacity;
+      // Dispose any previous instance first (e.g., hot reload or room switch)
+      if (fabricInstanceRef.current) {
+        try {
+          fabricInstanceRef.current.dispose();
+        } catch (err) {
+          console.warn('Fabric dispose during reinit failed:', err);
+        }
+        fabricInstanceRef.current = null;
+      }
 
-    setCanvas(fabricCanvas);
-
-    // Load existing canvas data
-    if (roomData?.canvas) {
-      fabricCanvas.loadFromJSON(roomData.canvas, () => {
-        fabricCanvas.renderAll();
-        generateCanvasDescription();
+      // Create a new instance
+      const fabricCanvas = new fabric.Canvas(canvasRef.current, {
+        width: 800,
+        height: 600,
+        backgroundColor: canvasSettings.backgroundColor,
+        selection: true,
+        preserveObjectStacking: true,
+        renderOnAddRemove: true,
+        skipTargetFind: false,
+        skipOffscreen: false
       });
-    }
 
-    // Cleanup function
+      // Configure defaults
+      fabricCanvas.isDrawingMode = true;
+      fabricCanvas.freeDrawingBrush.width = currentStrokeWidth;
+      fabricCanvas.freeDrawingBrush.color = currentColor;
+      fabricCanvas.freeDrawingBrush.opacity = currentOpacity;
+
+      // Attach handlers
+      fabricCanvas.on('mouse:down', handleDrawingStart);
+      fabricCanvas.on('mouse:move', handleDrawingMove);
+      fabricCanvas.on('mouse:up', handleDrawingEnd);
+      fabricCanvas.on('path:created', () => {
+        if (connected && sendEvent) {
+          const canvasState = fabricCanvas.toJSON();
+          sendEvent('draw-event', {
+            roomId,
+            action: 'path_created',
+            canvasData: canvasState,
+            tool: currentTool,
+            color: currentColor,
+            strokeWidth: currentStrokeWidth,
+            timestamp: Date.now()
+          });
+        }
+      });
+
+      fabricInstanceRef.current = fabricCanvas;
+      setCanvas(fabricCanvas);
+
+      // Load existing state
+      if (roomData?.canvas) {
+        fabricCanvas.loadFromJSON(roomData.canvas, () => {
+          fabricCanvas.renderAll();
+          generateCanvasDescription();
+        });
+      }
+
+      // Debug
+      console.log('🎨 Canvas initialized:', {
+        width: fabricCanvas.width,
+        height: fabricCanvas.height,
+        isDrawingMode: fabricCanvas.isDrawingMode,
+        brushWidth: fabricCanvas.freeDrawingBrush.width,
+        brushColor: fabricCanvas.freeDrawingBrush.color
+      });
+    };
+
+    rafId = window.requestAnimationFrame(mountCanvas);
+
     return () => {
-      if (fabricCanvas) {
-        fabricCanvas.dispose();
+      if (rafId) window.cancelAnimationFrame(rafId);
+      const instance = fabricInstanceRef.current;
+      if (instance) {
+        try { instance.off('mouse:down', handleDrawingStart); } catch {}
+        try { instance.off('mouse:move', handleDrawingMove); } catch {}
+        try { instance.off('mouse:up', handleDrawingEnd); } catch {}
+        try { instance.dispose(); } catch (err) {
+          console.warn('Fabric dispose on unmount failed:', err);
+        }
+        fabricInstanceRef.current = null;
       }
     };
-  }, [canvasSettings.backgroundColor, currentColor, currentOpacity, currentStrokeWidth, generateCanvasDescription, roomData?.canvas]);
+  }, [roomId]);
 
   /**
    * Initialize Web Speech API
@@ -643,135 +686,214 @@ const CanvasDrawing = ({
    * Handle drawing start
    */
   const handleDrawingStart = useCallback((event) => {
-    if (!canvas) return;
+    if (!canvas || !canvasRef.current) return;
 
-    const pointer = canvas.getPointer(event.e);
-    isDrawingRef.current = true;
-    setIsDrawing(true);
-    currentPathRef.current = [];
+    try {
+      const pointer = canvas.getPointer(event.e);
+      isDrawingRef.current = true;
+      setIsDrawing(true);
+      currentPathRef.current = [];
 
-    // Update user presence
-    if (user && connected) {
-      const cursorData = {
-        userId: user.userId,
-        username: user.username,
-        x: pointer.x,
-        y: pointer.y,
-        timestamp: Date.now()
-      };
-      
-      setUserCursors(prev => ({
-        ...prev,
-        [user.userId]: cursorData
-      }));
+      // Shape tools: start creating a shape
+      if (currentTool === 'rectangle' || currentTool === 'circle') {
+        canvas.isDrawingMode = false;
+        canvas.selection = false;
+        shapeStartRef.current = { x: pointer.x, y: pointer.y };
 
-      if (sendEvent) {
-        sendEvent('cursor-update', {
-          roomId,
-          cursor: cursorData
-        });
+        if (currentTool === 'rectangle') {
+          const rect = new fabric.Rect({
+            left: pointer.x,
+            top: pointer.y,
+            width: 1,
+            height: 1,
+            originX: 'left',
+            originY: 'top',
+            fill: 'transparent',
+            stroke: currentColor,
+            strokeUniform: true,
+            strokeWidth: currentStrokeWidth,
+            selectable: false,
+            evented: false,
+            scaleX: 1,
+            scaleY: 1
+          });
+          activeShapeRef.current = rect;
+          canvas.add(rect);
+        } else if (currentTool === 'circle') {
+          const circle = new fabric.Circle({
+            left: pointer.x,
+            top: pointer.y,
+            radius: 1,
+            originX: 'left',
+            originY: 'top',
+            fill: 'transparent',
+            stroke: currentColor,
+            strokeUniform: true,
+            strokeWidth: currentStrokeWidth,
+            selectable: false,
+            evented: false,
+            scaleX: 1,
+            scaleY: 1
+          });
+          activeShapeRef.current = circle;
+          canvas.add(circle);
+        }
+
+        canvas.requestRenderAll();
+      } else {
+        // Free drawing tools
+        canvas.isDrawingMode = true;
+        canvas.freeDrawingBrush.width = currentStrokeWidth;
+        canvas.freeDrawingBrush.color = currentTool === 'eraser' ? canvasSettings.backgroundColor : currentColor;
+        canvas.freeDrawingBrush.opacity = currentOpacity;
       }
-    }
 
-    // Start drawing based on current tool
-    if (currentTool === 'pen' || currentTool === 'brush' || currentTool === 'marker') {
-      canvas.isDrawingMode = true;
-      canvas.freeDrawingBrush.width = currentStrokeWidth;
-      canvas.freeDrawingBrush.color = currentColor;
-      canvas.freeDrawingBrush.opacity = currentOpacity;
-    } else if (currentTool === 'eraser') {
-      canvas.isDrawingMode = true;
-      canvas.freeDrawingBrush.width = currentStrokeWidth;
-      canvas.freeDrawingBrush.color = canvasSettings.backgroundColor;
-      canvas.freeDrawingBrush.opacity = 1;
-    } else {
-      canvas.isDrawingMode = false;
-    }
+      // Update user presence
+      if (user && connected) {
+        const cursorData = {
+          userId: user.userId,
+          username: user.username,
+          x: pointer.x,
+          y: pointer.y,
+          timestamp: Date.now()
+        };
+        
+        setUserCursors(prev => ({
+          ...prev,
+          [user.userId]: cursorData
+        }));
 
-    lastPointRef.current = pointer;
-  }, [canvas, currentTool, currentStrokeWidth, currentColor, currentOpacity, canvasSettings.backgroundColor, user, connected, sendEvent, roomId]);
+        if (sendEvent) {
+          sendEvent('cursor-update', {
+            roomId,
+            cursor: cursorData
+          });
+        }
+      }
+
+      lastPointRef.current = pointer;
+    } catch (error) {
+      console.error('Error in handleDrawingStart:', error);
+    }
+  }, [canvas, user, connected, sendEvent, roomId, currentTool, currentStrokeWidth, currentColor, currentOpacity, canvasSettings.backgroundColor]);
 
   /**
    * Handle drawing move
    */
   const handleDrawingMove = useCallback((event) => {
-    if (!canvas || !isDrawingRef.current) return;
+    if (!canvas || !isDrawingRef.current || !canvasRef.current) return;
 
-    const pointer = canvas.getPointer(event.e);
-    currentPathRef.current.push(pointer);
+    try {
+      const pointer = canvas.getPointer(event.e);
+      currentPathRef.current.push(pointer);
 
-    // Update user cursor
-    if (user && connected) {
-      const cursorData = {
-        userId: user.userId,
-        username: user.username,
-        x: pointer.x,
-        y: pointer.y,
-        timestamp: Date.now()
-      };
-      
-      setUserCursors(prev => ({
-        ...prev,
-        [user.userId]: cursorData
-      }));
-
-      if (sendEvent) {
-        sendEvent('cursor-update', {
-          roomId,
-          cursor: cursorData
-        });
+      if (currentTool === 'rectangle' && activeShapeRef.current && shapeStartRef.current) {
+        const start = shapeStartRef.current;
+        const left = Math.min(start.x, pointer.x);
+        const top = Math.min(start.y, pointer.y);
+        const width = Math.abs(pointer.x - start.x);
+        const height = Math.abs(pointer.y - start.y);
+        activeShapeRef.current.set({ left, top, width, height });
+        canvas.requestRenderAll();
+      } else if (currentTool === 'circle' && activeShapeRef.current && shapeStartRef.current) {
+        const start = shapeStartRef.current;
+        const dx = pointer.x - start.x;
+        const dy = pointer.y - start.y;
+        const radius = Math.max(Math.abs(dx), Math.abs(dy)) / 2;
+        const centerX = (pointer.x + start.x) / 2;
+        const centerY = (pointer.y + start.y) / 2;
+        activeShapeRef.current.set({ left: centerX - radius, top: centerY - radius, radius });
+        canvas.requestRenderAll();
       }
-    }
 
-    lastPointRef.current = pointer;
-  }, [canvas, user, connected, sendEvent, roomId]);
+      // Update user cursor
+      if (user && connected) {
+        const cursorData = {
+          userId: user.userId,
+          username: user.username,
+          x: pointer.x,
+          y: pointer.y,
+          timestamp: Date.now()
+        };
+        
+        setUserCursors(prev => ({
+          ...prev,
+          [user.userId]: cursorData
+        }));
+
+        if (sendEvent) {
+          sendEvent('cursor-update', {
+            roomId,
+            cursor: cursorData
+          });
+        }
+      }
+
+      lastPointRef.current = pointer;
+    } catch (error) {
+      console.error('Error in handleDrawingMove:', error);
+    }
+  }, [canvas, user, connected, sendEvent, roomId, currentTool]);
 
   /**
    * Handle drawing end
    */
   const handleDrawingEnd = useCallback((event) => {
-    if (!canvas || !isDrawingRef.current) return;
+    if (!canvas || !isDrawingRef.current || !canvasRef.current) return;
 
-    isDrawingRef.current = false;
-    setIsDrawing(false);
+    try {
+      isDrawingRef.current = false;
+      setIsDrawing(false);
 
-    // Save to history
-    const canvasState = canvas.toJSON();
-    setDrawingHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(canvasState);
-      return newHistory.slice(-50); // Keep last 50 states
-    });
-    setHistoryIndex(prev => prev + 1);
-    setCanUndo(true);
-    setCanRedo(false);
+      // Finalize shapes
+      if ((currentTool === 'rectangle' || currentTool === 'circle') && activeShapeRef.current) {
+        activeShapeRef.current.set({ selectable: true, evented: true });
+        activeShapeRef.current = null;
+        shapeStartRef.current = null;
+        canvas.selection = true;
+      }
 
-    // Log drawing action for Blind Mode
-    logCanvasAction('draw', currentTool, {
-      color: currentColor,
-      strokeWidth: currentStrokeWidth,
-      pathLength: currentPathRef.current.length
-    });
+      // Save to history
+      const canvasState = canvas.toJSON();
+      setDrawingHistory(prev => {
+        const newHistory = prev.slice(0, historyIndex + 1);
+        newHistory.push(canvasState);
+        return newHistory.slice(-50); // Keep last 50 states
+      });
+      setHistoryIndex(prev => prev + 1);
+      setCanUndo(true);
+      setCanRedo(false);
 
-    // Generate description
-    generateCanvasDescription();
-
-    // Send drawing event
-    if (connected && sendEvent) {
-      sendEvent('draw-event', {
-        roomId,
-        action: 'drawing_complete',
-        canvasData: canvasState,
-        tool: currentTool,
+      // Log action
+      const actionType = currentTool === 'rectangle' || currentTool === 'circle' ? 'add_shape' : 'draw';
+      logCanvasAction(actionType, currentTool, {
         color: currentColor,
         strokeWidth: currentStrokeWidth,
-        timestamp: Date.now()
+        pathLength: currentPathRef.current.length
       });
-    }
 
-    // Update room data
-    if (onRoomUpdate) {
-      onRoomUpdate({ canvas: canvasState });
+      // Generate description
+      generateCanvasDescription();
+
+      // Send event
+      if (connected && sendEvent) {
+        sendEvent('draw-event', {
+          roomId,
+          action: 'drawing_complete',
+          canvasData: canvasState,
+          tool: currentTool,
+          color: currentColor,
+          strokeWidth: currentStrokeWidth,
+          timestamp: Date.now()
+        });
+      }
+
+      // Update room
+      if (onRoomUpdate) {
+        onRoomUpdate({ canvas: canvasState });
+      }
+    } catch (error) {
+      console.error('Error in handleDrawingEnd:', error);
     }
   }, [canvas, connected, sendEvent, roomId, currentTool, currentColor, currentStrokeWidth, onRoomUpdate, generateCanvasDescription, historyIndex, logCanvasAction]);
 
@@ -783,12 +905,29 @@ const CanvasDrawing = ({
     setIsEraser(tool === 'eraser');
     
     if (canvas) {
-      if (tool === 'pen' || tool === 'brush' || tool === 'marker' || tool === 'eraser') {
+      if (tool === 'brush' || tool === 'marker' || tool === 'eraser') {
+        // Enable drawing mode for drawing tools
         canvas.isDrawingMode = true;
         canvas.freeDrawingBrush.width = currentStrokeWidth;
         canvas.freeDrawingBrush.color = tool === 'eraser' ? canvasSettings.backgroundColor : currentColor;
         canvas.freeDrawingBrush.opacity = currentOpacity;
+        
+        // Configure brush based on tool
+        if (tool === 'brush') {
+          canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+          canvas.freeDrawingBrush.width = currentStrokeWidth * 2; // Brush is thicker
+        } else if (tool === 'marker') {
+          canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+          canvas.freeDrawingBrush.width = currentStrokeWidth * 3; // Marker is thickest
+        } else if (tool === 'eraser') {
+          canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+          canvas.freeDrawingBrush.color = canvasSettings.backgroundColor;
+        }
+      } else if (tool === 'rectangle' || tool === 'circle') {
+        // Disable free drawing for shapes; handled in mouse handlers
+        canvas.isDrawingMode = false;
       } else {
+        // Disable drawing mode for selection and shape tools
         canvas.isDrawingMode = false;
       }
     }
@@ -800,6 +939,20 @@ const CanvasDrawing = ({
       announce(`Switched to ${tools[tool]?.name || tool} tool`, 'polite');
     }
   }, [canvas, currentStrokeWidth, currentColor, currentOpacity, canvasSettings.backgroundColor, tools, screenReader, announce, logCanvasAction]);
+
+  /**
+   * Update canvas settings when they change
+   */
+  useEffect(() => {
+    if (!canvas) return;
+
+    // Update brush settings
+    if (canvas.isDrawingMode) {
+      canvas.freeDrawingBrush.width = currentStrokeWidth;
+      canvas.freeDrawingBrush.color = currentTool === 'eraser' ? canvasSettings.backgroundColor : currentColor;
+      canvas.freeDrawingBrush.opacity = currentOpacity;
+    }
+  }, [canvas, currentStrokeWidth, currentColor, currentOpacity, currentTool, canvasSettings.backgroundColor]);
 
   /**
    * Handle color change
@@ -881,9 +1034,6 @@ const CanvasDrawing = ({
 
     // Tool shortcuts
     switch (event.key) {
-      case 'p':
-        handleToolChange('pen');
-        break;
       case 'b':
         handleToolChange('brush');
         break;
@@ -900,15 +1050,6 @@ const CanvasDrawing = ({
         if (!event.ctrlKey || !event.shiftKey) {
           handleToolChange('circle');
         }
-        break;
-      case 'l':
-        handleToolChange('line');
-        break;
-      case 't':
-        handleToolChange('text');
-        break;
-      case 's':
-        handleToolChange('select');
         break;
       default:
         // No tool shortcut for this key
@@ -1167,12 +1308,6 @@ const CanvasDrawing = ({
           <canvas
             ref={canvasRef}
             className="border border-gray-300 dark:border-gray-600"
-            onMouseDown={handleDrawingStart}
-            onMouseMove={handleDrawingMove}
-            onMouseUp={handleDrawingEnd}
-            onTouchStart={handleDrawingStart}
-            onTouchMove={handleDrawingMove}
-            onTouchEnd={handleDrawingEnd}
             onKeyDown={handleKeyDown}
             tabIndex={0}
             aria-label="Drawing canvas"
@@ -1194,15 +1329,13 @@ const CanvasDrawing = ({
       <div className="sr-only" id="canvas-help">
         <h3>Canvas Controls</h3>
         <ul>
-          <li>P: Pen tool</li>
+          
           <li>B: Brush tool</li>
           <li>M: Marker tool</li>
           <li>E: Eraser tool</li>
           <li>R: Rectangle tool</li>
           <li>C: Circle tool</li>
-          <li>L: Line tool</li>
-          <li>T: Text tool</li>
-          <li>S: Select tool</li>
+          
           <li>Ctrl+Z: Undo</li>
           <li>Ctrl+Shift+Z: Redo</li>
           <li>Ctrl+S: Save</li>
@@ -1218,15 +1351,13 @@ const CanvasDrawing = ({
         <div className="sr-only" id="voice-commands-help">
           <h3>Voice Commands</h3>
           <ul>
-            <li>Say "pen" or "pencil" to switch to pen tool</li>
+            <li>Say "brush" to switch to brush tool</li>
             <li>Say "brush" to switch to brush tool</li>
             <li>Say "marker" to switch to marker tool</li>
             <li>Say "eraser" to switch to eraser tool</li>
             <li>Say "rectangle" to switch to rectangle tool</li>
             <li>Say "circle" to switch to circle tool</li>
-            <li>Say "line" to switch to line tool</li>
-            <li>Say "text" to switch to text tool</li>
-            <li>Say "select" to switch to select tool</li>
+            
             <li>Say "red", "blue", "green", "black", "white" to change colors</li>
             <li>Say "draw circle 100x100 center" to draw a circle</li>
             <li>Say "draw rectangle 200x100 top-left" to draw a rectangle</li>

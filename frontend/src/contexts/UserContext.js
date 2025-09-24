@@ -22,6 +22,7 @@ const userReducer = (state, action) => {
         isAuthenticated: true,
       };
     case 'CLEAR_USER':
+      console.log('🔄 UserContext: CLEAR_USER action dispatched');
       return {
         ...state,
         user: null,
@@ -283,12 +284,17 @@ export const UserProvider = ({ children }) => {
 
   // Logout user
   const logout = () => {
+    console.log('🧹 UserContext: Starting logout process...');
+    
     dispatch({ type: 'CLEAR_USER' });
     dispatch({ type: 'CLEAR_CURRENT_ROOM' });
     
-    // Clear localStorage
+    // Clear all localStorage items related to user
     localStorage.removeItem('liveroom-user');
     localStorage.removeItem('liveroom-session-id');
+    localStorage.removeItem('liveroom-username');
+    
+    console.log('✅ UserContext: Logout completed - all user data cleared');
   };
 
   // Clear error
