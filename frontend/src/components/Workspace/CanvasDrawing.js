@@ -65,7 +65,6 @@ const CanvasDrawing = ({
   const [voiceCommandHistory, setVoiceCommandHistory] = useState([]);
 
   // Textual descriptions for accessibility
-  const [drawingDescriptions, setDrawingDescriptions] = useState([]);
   const [descriptionLog, setDescriptionLog] = useState([]);
   
   // Blind Mode action log
@@ -264,41 +263,6 @@ const CanvasDrawing = ({
     }]);
   }, [blindModeEnabled, generateActionDescription, announceToScreenReader]);
 
-  /**
-   * Generate textual description of canvas content
-   */
-  const generateCanvasDescription = useCallback(() => {
-    if (!canvas) return;
-
-    const objects = canvas.getObjects();
-    const descriptions = [];
-
-    objects.forEach((obj, index) => {
-      let description = '';
-      
-      if (obj.type === 'rect') {
-        description = `Rectangle ${index + 1}: ${obj.width}x${obj.height} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'circle') {
-        description = `Circle ${index + 1}: radius ${Math.round(obj.radius)} pixels, color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'line') {
-        description = `Line ${index + 1}: from (${Math.round(obj.x1)}, ${Math.round(obj.y1)}) to (${Math.round(obj.x2)}, ${Math.round(obj.y2)}), color ${obj.stroke}`;
-      } else if (obj.type === 'text') {
-        description = `Text ${index + 1}: "${obj.text}", color ${obj.fill}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      } else if (obj.type === 'path') {
-        description = `Drawing ${index + 1}: ${obj.path.length} points, color ${obj.stroke}, width ${obj.strokeWidth}`;
-      } else {
-        description = `Object ${index + 1}: ${obj.type}, color ${obj.fill || obj.stroke}, position (${Math.round(obj.left)}, ${Math.round(obj.top)})`;
-      }
-      
-      descriptions.push(description);
-    });
-
-    setDrawingDescriptions(descriptions);
-    
-    if (screenReader) {
-      announce(`Canvas updated: ${objects.length} objects`, 'polite');
-    }
-  }, [canvas, screenReader, announce, setDrawingDescriptions]);
 
   /**
    * Handle redo
@@ -311,7 +275,6 @@ const CanvasDrawing = ({
       setHistoryIndex(newIndex);
       canvas.loadFromJSON(drawingHistory[newIndex], () => {
         canvas.renderAll();
-        generateCanvasDescription();
       });
       setCanRedo(newIndex < drawingHistory.length - 1);
       setCanUndo(true);
@@ -323,7 +286,32 @@ const CanvasDrawing = ({
     if (screenReader) {
       announce('Redid last action', 'polite');
     }
-  }, [canvas, canRedo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
+  }, [canvas, canRedo, historyIndex, drawingHistory, screenReader, announce, logCanvasAction, currentTool]);
+
+  /**
+   * Clean up empty shapes from canvas
+   */
+  const cleanupEmptyShapes = useCallback(() => {
+    if (!canvas) return;
+    
+    const objects = canvas.getObjects();
+    const emptyShapes = objects.filter(obj => {
+      if (obj.type === 'rect') {
+        return obj.width <= 10 || obj.height <= 10;
+      } else if (obj.type === 'circle') {
+        return obj.radius <= 10;
+      }
+      return false;
+    });
+    
+    emptyShapes.forEach(shape => {
+      canvas.remove(shape);
+    });
+    
+    if (emptyShapes.length > 0) {
+      canvas.requestRenderAll();
+    }
+  }, [canvas]);
 
   /**
    * Handle clear canvas
@@ -336,7 +324,6 @@ const CanvasDrawing = ({
     setHistoryIndex(-1);
     setCanUndo(false);
     setCanRedo(false);
-    setDrawingDescriptions([]);
     setDescriptionLog(prev => [...prev, {
       timestamp: Date.now(),
       action: 'canvas_cleared',
@@ -380,7 +367,6 @@ const CanvasDrawing = ({
       setHistoryIndex(newIndex);
       canvas.loadFromJSON(drawingHistory[newIndex], () => {
         canvas.renderAll();
-        generateCanvasDescription();
       });
       setCanUndo(newIndex > 0);
       setCanRedo(true);
@@ -392,7 +378,7 @@ const CanvasDrawing = ({
     if (screenReader) {
       announce('Undid last action', 'polite');
     }
-  }, [canvas, canUndo, historyIndex, drawingHistory, generateCanvasDescription, screenReader, announce, logCanvasAction, currentTool]);
+  }, [canvas, canUndo, historyIndex, drawingHistory, screenReader, announce, logCanvasAction, currentTool]);
 
   /**
    * Process voice commands
@@ -498,100 +484,6 @@ const CanvasDrawing = ({
   }, [logCanvasAction, currentTool, handleUndo, handleRedo, handleClearCanvas, handleSaveCanvas, announce]);
 
 
-  /**
-   * Initialize Fabric.js canvas
-   * Only (re)initialize when room changes to avoid duplicate instances
-   */
-  useEffect(() => {
-    let rafId;
-
-    const mountCanvas = () => {
-      if (!canvasRef.current) return;
-
-      // Dispose any previous instance first (e.g., hot reload or room switch)
-      if (fabricInstanceRef.current) {
-        try {
-          fabricInstanceRef.current.dispose();
-        } catch (err) {
-          console.warn('Fabric dispose during reinit failed:', err);
-        }
-        fabricInstanceRef.current = null;
-      }
-
-      // Create a new instance
-      const fabricCanvas = new fabric.Canvas(canvasRef.current, {
-        width: 800,
-        height: 600,
-        backgroundColor: canvasSettings.backgroundColor,
-        selection: true,
-        preserveObjectStacking: true,
-        renderOnAddRemove: true,
-        skipTargetFind: false,
-        skipOffscreen: false
-      });
-
-      // Configure defaults
-      fabricCanvas.isDrawingMode = true;
-      fabricCanvas.freeDrawingBrush.width = currentStrokeWidth;
-      fabricCanvas.freeDrawingBrush.color = currentColor;
-      fabricCanvas.freeDrawingBrush.opacity = currentOpacity;
-
-      // Attach handlers
-      fabricCanvas.on('mouse:down', handleDrawingStart);
-      fabricCanvas.on('mouse:move', handleDrawingMove);
-      fabricCanvas.on('mouse:up', handleDrawingEnd);
-      fabricCanvas.on('path:created', () => {
-        if (connected && sendEvent) {
-          const canvasState = fabricCanvas.toJSON();
-          sendEvent('draw-event', {
-            roomId,
-            action: 'path_created',
-            canvasData: canvasState,
-            tool: currentTool,
-            color: currentColor,
-            strokeWidth: currentStrokeWidth,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      fabricInstanceRef.current = fabricCanvas;
-      setCanvas(fabricCanvas);
-
-      // Load existing state
-      if (roomData?.canvas) {
-        fabricCanvas.loadFromJSON(roomData.canvas, () => {
-          fabricCanvas.renderAll();
-          generateCanvasDescription();
-        });
-      }
-
-      // Debug
-      console.log('🎨 Canvas initialized:', {
-        width: fabricCanvas.width,
-        height: fabricCanvas.height,
-        isDrawingMode: fabricCanvas.isDrawingMode,
-        brushWidth: fabricCanvas.freeDrawingBrush.width,
-        brushColor: fabricCanvas.freeDrawingBrush.color
-      });
-    };
-
-    rafId = window.requestAnimationFrame(mountCanvas);
-
-    return () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-      const instance = fabricInstanceRef.current;
-      if (instance) {
-        try { instance.off('mouse:down', handleDrawingStart); } catch {}
-        try { instance.off('mouse:move', handleDrawingMove); } catch {}
-        try { instance.off('mouse:up', handleDrawingEnd); } catch {}
-        try { instance.dispose(); } catch (err) {
-          console.warn('Fabric dispose on unmount failed:', err);
-        }
-        fabricInstanceRef.current = null;
-      }
-    };
-  }, [roomId]);
 
   /**
    * Initialize Web Speech API
@@ -704,18 +596,16 @@ const CanvasDrawing = ({
           const rect = new fabric.Rect({
             left: pointer.x,
             top: pointer.y,
-            width: 5, // Start with minimum visible size
-            height: 5,
+            width: 0, // Start with zero width
+            height: 0, // Start with zero height
             originX: 'left',
             originY: 'top',
             fill: 'transparent',
             stroke: currentColor,
-            strokeUniform: true,
             strokeWidth: currentStrokeWidth,
             selectable: false,
             evented: false,
-            scaleX: 1,
-            scaleY: 1
+            strokeDashArray: [5, 5] // Dashed line for preview
           });
           activeShapeRef.current = rect;
           canvas.add(rect);
@@ -723,17 +613,15 @@ const CanvasDrawing = ({
           const circle = new fabric.Circle({
             left: pointer.x,
             top: pointer.y,
-            radius: 1,
+            radius: 0, // Start with zero radius
             originX: 'left',
             originY: 'top',
             fill: 'transparent',
             stroke: currentColor,
-            strokeUniform: true,
             strokeWidth: currentStrokeWidth,
             selectable: false,
             evented: false,
-            scaleX: 1,
-            scaleY: 1
+            strokeDashArray: [5, 5] // Dashed line for preview
           });
           activeShapeRef.current = circle;
           canvas.add(circle);
@@ -794,26 +682,26 @@ const CanvasDrawing = ({
         const width = Math.abs(pointer.x - start.x);
         const height = Math.abs(pointer.y - start.y);
         
-        // Ensure minimum size for visibility
-        const minSize = 5;
-        const finalWidth = Math.max(width, minSize);
-        const finalHeight = Math.max(height, minSize);
-        
         activeShapeRef.current.set({ 
           left, 
           top, 
-          width: finalWidth, 
-          height: finalHeight 
+          width, 
+          height 
         });
         canvas.requestRenderAll();
       } else if (currentTool === 'circle' && activeShapeRef.current && shapeStartRef.current) {
         const start = shapeStartRef.current;
         const dx = pointer.x - start.x;
         const dy = pointer.y - start.y;
-        const radius = Math.max(Math.abs(dx), Math.abs(dy)) / 2;
-        const centerX = (pointer.x + start.x) / 2;
-        const centerY = (pointer.y + start.y) / 2;
-        activeShapeRef.current.set({ left: centerX - radius, top: centerY - radius, radius });
+        const radius = Math.sqrt(dx * dx + dy * dy); // Use actual distance for radius
+        const centerX = start.x;
+        const centerY = start.y;
+        
+        activeShapeRef.current.set({ 
+          left: centerX - radius, 
+          top: centerY - radius, 
+          radius 
+        });
         canvas.requestRenderAll();
       }
 
@@ -858,10 +746,27 @@ const CanvasDrawing = ({
 
       // Finalize shapes
       if ((currentTool === 'rectangle' || currentTool === 'circle') && activeShapeRef.current) {
-        activeShapeRef.current.set({ selectable: true, evented: true });
+        // Remove dashed line preview and make shape solid
+        activeShapeRef.current.set({ 
+          selectable: true, 
+          evented: true,
+          strokeDashArray: null // Remove dashed line
+        });
+        
+        // Only keep shapes that have meaningful size
+        const shape = activeShapeRef.current;
+        const shouldKeep = (currentTool === 'rectangle' && shape.width > 10 && shape.height > 10) ||
+                          (currentTool === 'circle' && shape.radius > 10);
+        
+        if (!shouldKeep) {
+          // Remove the shape if it's too small
+          canvas.remove(shape);
+        }
+        
         activeShapeRef.current = null;
         shapeStartRef.current = null;
         canvas.selection = true;
+        canvas.requestRenderAll();
       }
 
       // Save to history
@@ -884,7 +789,6 @@ const CanvasDrawing = ({
       });
 
       // Generate description
-      generateCanvasDescription();
 
       // Send event
       if (connected && sendEvent) {
@@ -906,7 +810,7 @@ const CanvasDrawing = ({
     } catch (error) {
       console.error('Error in handleDrawingEnd:', error);
     }
-  }, [canvas, connected, sendEvent, roomId, currentTool, currentColor, currentStrokeWidth, onRoomUpdate, generateCanvasDescription, historyIndex, logCanvasAction]);
+  }, [canvas, connected, sendEvent, roomId, currentTool, currentColor, currentStrokeWidth, onRoomUpdate, historyIndex, logCanvasAction]);
 
   /**
    * Handle tool change
@@ -952,6 +856,111 @@ const CanvasDrawing = ({
   }, [canvas, currentStrokeWidth, currentColor, currentOpacity, canvasSettings.backgroundColor, tools, screenReader, announce, logCanvasAction]);
 
   /**
+   * Initialize Fabric.js canvas
+   * Only (re)initialize when room changes to avoid duplicate instances
+   */
+  useEffect(() => {
+    let rafId;
+
+    const mountCanvas = () => {
+      if (!canvasRef.current) return;
+
+      // Dispose any previous instance first (e.g., hot reload or room switch)
+      if (fabricInstanceRef.current) {
+        try {
+          fabricInstanceRef.current.dispose();
+        } catch (err) {
+          console.warn('Fabric dispose during reinit failed:', err);
+        }
+        fabricInstanceRef.current = null;
+      }
+
+      // Create a new instance
+      const fabricCanvas = new fabric.Canvas(canvasRef.current, {
+        width: 800,
+        height: 600,
+        backgroundColor: canvasSettings.backgroundColor,
+        selection: true,
+        preserveObjectStacking: true,
+        renderOnAddRemove: true,
+        skipTargetFind: false,
+        skipOffscreen: false
+      });
+
+      // Configure defaults
+      fabricCanvas.isDrawingMode = true;
+      fabricCanvas.freeDrawingBrush.width = currentStrokeWidth;
+      fabricCanvas.freeDrawingBrush.color = currentColor;
+      fabricCanvas.freeDrawingBrush.opacity = currentOpacity;
+
+      // Attach handlers
+      fabricCanvas.on('mouse:down', handleDrawingStart);
+      fabricCanvas.on('mouse:move', handleDrawingMove);
+      fabricCanvas.on('mouse:up', handleDrawingEnd);
+      fabricCanvas.on('path:created', () => {
+        if (connected && sendEvent) {
+          const canvasState = fabricCanvas.toJSON();
+          sendEvent('draw-event', {
+            roomId,
+            action: 'path_created',
+            canvasData: canvasState,
+            tool: currentTool,
+            color: currentColor,
+            strokeWidth: currentStrokeWidth,
+            timestamp: Date.now()
+          });
+        }
+      });
+
+      fabricInstanceRef.current = fabricCanvas;
+      setCanvas(fabricCanvas);
+
+      // Load existing state
+      if (roomData?.canvas) {
+        fabricCanvas.loadFromJSON(roomData.canvas, () => {
+          fabricCanvas.renderAll();
+        });
+      }
+
+    };
+
+    rafId = window.requestAnimationFrame(mountCanvas);
+
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      const instance = fabricInstanceRef.current;
+      if (instance) {
+        try { instance.off('mouse:down', handleDrawingStart); } catch {}
+        try { instance.off('mouse:move', handleDrawingMove); } catch {}
+        try { instance.off('mouse:up', handleDrawingEnd); } catch {}
+        try { instance.dispose(); } catch (err) {
+          console.warn('Fabric dispose on unmount failed:', err);
+        }
+        fabricInstanceRef.current = null;
+      }
+    };
+  }, [roomId]); // Only depend on roomId to prevent blinking
+
+  /**
+   * Update canvas event handlers when they change
+   * This prevents the canvas from being recreated while updating handlers
+   */
+  useEffect(() => {
+    if (!canvas) return;
+
+    // Remove old handlers
+    canvas.off('mouse:down', handleDrawingStart);
+    canvas.off('mouse:move', handleDrawingMove);
+    canvas.off('mouse:up', handleDrawingEnd);
+
+    // Add new handlers
+    canvas.on('mouse:down', handleDrawingStart);
+    canvas.on('mouse:move', handleDrawingMove);
+    canvas.on('mouse:up', handleDrawingEnd);
+
+  }, [canvas, handleDrawingStart, handleDrawingMove, handleDrawingEnd]);
+
+  /**
    * Update canvas settings when they change
    */
   useEffect(() => {
@@ -964,6 +973,16 @@ const CanvasDrawing = ({
       canvas.freeDrawingBrush.opacity = currentOpacity;
     }
   }, [canvas, currentStrokeWidth, currentColor, currentOpacity, currentTool, canvasSettings.backgroundColor]);
+
+  /**
+   * Clean up empty shapes when canvas is ready
+   */
+  useEffect(() => {
+    if (canvas) {
+      // Clean up any existing empty shapes
+      cleanupEmptyShapes();
+    }
+  }, [canvas, cleanupEmptyShapes]);
 
   /**
    * Handle color change
@@ -1171,25 +1190,6 @@ const CanvasDrawing = ({
     );
   };
 
-  /**
-   * Render drawing descriptions
-   */
-  const renderDrawingDescriptions = () => {
-    return (
-      <div className="p-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-medium mb-2">Canvas Description</h3>
-        <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-          {drawingDescriptions.length > 0 ? (
-            drawingDescriptions.map((description, index) => (
-              <div key={index}>{description}</div>
-            ))
-          ) : (
-            <div>Canvas is empty</div>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   /**
    * Render action log for Blind Mode
@@ -1335,8 +1335,6 @@ const CanvasDrawing = ({
         </div>
       </div>
 
-      {/* Drawing Descriptions */}
-      {renderDrawingDescriptions()}
 
       {/* Action Log for Blind Mode */}
       {renderActionLog()}

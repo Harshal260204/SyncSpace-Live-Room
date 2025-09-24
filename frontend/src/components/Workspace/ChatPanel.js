@@ -180,6 +180,17 @@ const ChatPanel = ({
    */
   const addActivity = useCallback((activity) => {
     setRecentActivities(prev => {
+      // Check if this activity already exists to prevent duplicates
+      const exists = prev.some(existing => 
+        existing.type === activity.type &&
+        existing.userId === activity.userId &&
+        existing.timestamp === activity.timestamp
+      );
+      
+      if (exists) {
+        return prev;
+      }
+      
       const updated = [...prev, activity];
       return updated.slice(-10); // Keep only last 10 for recent activities
     });
@@ -209,39 +220,47 @@ const ChatPanel = ({
    */
   useEffect(() => {
     if (chatMessages && chatMessages.length > 0) {
+      // Only process if we have new messages
+      const previousMessageCount = messages.length;
+      const currentMessageCount = chatMessages.length;
+      
       setMessages(chatMessages);
       
-      // Handle new messages for notifications and announcements
-      const latestMessage = chatMessages[chatMessages.length - 1];
-      if (latestMessage && latestMessage.userId !== user?.userId) {
-        // Handle new message inline to avoid dependency issues
-        // Add to activity feed
-        addActivity({
-          type: 'message',
-          description: `${latestMessage.username} sent a message`,
-          details: latestMessage.text,
-          timestamp: Date.now(),
-          userId: latestMessage.userId,
-          username: latestMessage.username
+      // Only handle notifications for truly new messages
+      if (currentMessageCount > previousMessageCount) {
+        const newMessages = chatMessages.slice(previousMessageCount);
+        
+        newMessages.forEach(newMessage => {
+          if (newMessage.userId !== user?.userId) {
+            // Add to activity feed
+            addActivity({
+              type: 'message',
+              description: `${newMessage.username} sent a message`,
+              details: newMessage.text || newMessage.message,
+              timestamp: Date.now(),
+              userId: newMessage.userId,
+              username: newMessage.username
+            });
+
+            // Show notification if not focused
+            if (!isFocused) {
+              showNotification({
+                type: 'message',
+                title: 'New Message',
+                message: `${newMessage.username}: ${newMessage.text || newMessage.message}`,
+                duration: NOTIFICATION_DURATION
+              });
+            }
+
+            // Announce for Blind Mode
+            announceForBlindMode(newMessage, 'message');
+
+            // Announce to screen readers (fallback)
+            if (screenReader && !blindModeEnabled) {
+              announce(`New message from ${newMessage.username}: ${newMessage.text || newMessage.message}`, 'polite');
+            }
+          }
         });
-
-        // Show notification if not focused
-        if (!isFocused) {
-          showNotification({
-            type: 'message',
-            title: 'New Message',
-            message: `${latestMessage.username}: ${latestMessage.text}`,
-            duration: NOTIFICATION_DURATION
-          });
-        }
-
-        // Announce for Blind Mode
-        announceForBlindMode(latestMessage, 'message');
-
-        // Announce to screen readers (fallback)
-        if (screenReader && !blindModeEnabled) {
-          announce(`New message from ${latestMessage.username}: ${latestMessage.text}`, 'polite');
-        }
       }
       
       // Auto-scroll to bottom when new messages arrive
@@ -251,7 +270,8 @@ const ChatPanel = ({
         }
       }, 100);
     }
-  }, [chatMessages, user?.userId, isFocused, addActivity, showNotification, announceForBlindMode, screenReader, announce, blindModeEnabled]);
+  }, [chatMessages, user?.userId, isFocused, addActivity, showNotification, announceForBlindMode, screenReader, announce, blindModeEnabled, messages.length]);
+
 
   /**
    * Handle socket events for typing indicators
@@ -461,6 +481,9 @@ const ChatPanel = ({
         msg.timestamp > (lastReadRef.current || 0)
       );
       setUnreadCount(unreadMessages.length);
+    } else if (isFocused) {
+      // Reset unread count when focused
+      setUnreadCount(0);
     }
   }, [messages, isFocused, user?.userId]);
 
@@ -494,7 +517,7 @@ const ChatPanel = ({
               {messageTime}
             </span>
           </div>
-          <p className="text-sm">{message.text}</p>
+          <p className="text-sm">{message.text || message.message}</p>
         </div>
       </div>
     );
@@ -670,64 +693,67 @@ const ChatPanel = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Message Input */}
-      <div className="flex-shrink-0 p-3 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex space-x-2">
-          <input
-            ref={messageInputRef}
-            type="text"
-            value={newMessage}
-            onChange={handleInputChange}
-            onKeyPress={handleKeyPress}
-            placeholder="Type a message..."
-            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
-            aria-label="Message input"
-            aria-describedby="message-help"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!newMessage.trim() || !connected}
-            className="btn btn-primary"
-            aria-label="Send message"
-            title="Send message (Enter)"
+      {/* Footer - Message Input and Status */}
+      <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+        {/* Message Input */}
+        <div className="p-3">
+          <div className="flex space-x-2">
+            <input
+              ref={messageInputRef}
+              type="text"
+              value={newMessage}
+              onChange={handleInputChange}
+              onKeyPress={handleKeyPress}
+              placeholder="Type a message..."
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+              aria-label="Message input"
+              aria-describedby="message-help"
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!newMessage.trim() || !connected}
+              className="btn btn-primary"
+              aria-label="Send message"
+              title="Send message (Enter)"
+            >
+              Send
+            </button>
+          </div>
+          <div id="message-help" className="sr-only">
+            Press Enter to send message, Shift+Enter for new line
+            {blindModeEnabled && (
+              <span>Press Ctrl+Shift+M to read last message</span>
+            )}
+          </div>
+        </div>
+
+        {/* Notifications */}
+        {notifications.map(renderNotification)}
+
+        {/* Screen Reader Status */}
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {unreadCount > 0 && `${unreadCount} unread messages`}
+          {Object.keys(typingUsers).length > 0 && `${Object.keys(typingUsers).length} users typing`}
+        </div>
+
+        {/* Blind Mode Announcements */}
+        {blindModeEnabled && (
+          <div 
+            className="sr-only" 
+            aria-live="polite" 
+            aria-atomic="true"
+            id="chat-announcements"
+            role="status"
+            aria-label="Chat announcements"
           >
-            Send
-          </button>
-        </div>
-        <div id="message-help" className="sr-only">
-          Press Enter to send message, Shift+Enter for new line
-          {blindModeEnabled && (
-            <span>Press Ctrl+Shift+M to read last message</span>
-          )}
-        </div>
+            {currentAnnouncement && (
+              <span key={Date.now()}>
+                {currentAnnouncement}
+              </span>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Notifications */}
-      {notifications.map(renderNotification)}
-
-      {/* Screen Reader Status */}
-      <div className="sr-only" aria-live="polite" aria-atomic="true">
-        {unreadCount > 0 && `${unreadCount} unread messages`}
-        {Object.keys(typingUsers).length > 0 && `${Object.keys(typingUsers).length} users typing`}
-      </div>
-
-      {/* Blind Mode Announcements */}
-      {blindModeEnabled && (
-        <div 
-          className="sr-only" 
-          aria-live="polite" 
-          aria-atomic="true"
-          id="chat-announcements"
-          role="status"
-          aria-label="Chat announcements"
-        >
-          {currentAnnouncement && (
-            <span key={Date.now()}>
-              {currentAnnouncement}
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 };
