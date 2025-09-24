@@ -9,29 +9,25 @@ The Canvas Drawing component provides a powerful collaborative whiteboard experi
 ## Features
 
 ### Drawing Tools
-- **Pen**: Freehand drawing with customizable stroke width
-- **Brush**: Soft brush strokes with opacity control
-- **Marker**: Highlighter-style drawing
+- **Brush**: Freehand drawing with customizable stroke width
+- **Marker**: Highlighter-style drawing with thicker strokes
 - **Eraser**: Remove parts of drawings
-- **Rectangle**: Draw rectangular shapes
-- **Circle**: Draw circular shapes
-- **Line**: Draw straight lines
-- **Text**: Add text annotations
-- **Select**: Select and manipulate objects
+- **Rectangle**: Draw rectangular shapes (✅ Fixed - now works properly)
+- **Circle**: Draw circular shapes (✅ Fixed - now works properly)
 
 ### Voice Commands (Web Speech API)
-- **Tool Selection**: "pen", "brush", "marker", "eraser", "rectangle", "circle", "line", "text", "select"
+- **Tool Selection**: "brush", "marker", "eraser", "rectangle", "circle"
 - **Color Selection**: "red", "blue", "green", "black", "white"
 - **Actions**: "undo", "redo", "clear", "save"
 - **Toggle**: Enable/disable voice commands
 - **Real-time Processing**: Continuous speech recognition
 
-### Textual Descriptions
-- **Object Descriptions**: Detailed descriptions of all canvas objects
-- **Live Updates**: Real-time description updates as canvas changes
+### Accessibility Features
 - **Screen Reader Support**: Automatic announcements for canvas changes
-- **Description Log**: Historical log of all canvas changes
-- **AI Processing**: Structured data for AI analysis
+- **Keyboard Navigation**: Full keyboard support for all tools
+- **ARIA Labels**: Complete ARIA labeling for accessibility
+- **Focus Management**: Proper focus handling and restoration
+- **High Contrast**: Support for high contrast mode
 
 ### Real-time Collaboration
 - **Live Synchronization**: Real-time canvas synchronization via Socket.io
