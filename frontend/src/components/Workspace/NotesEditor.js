@@ -61,6 +61,9 @@ const NotesEditor = ({
   // Blind Mode state
   const [lastNoteUpdate, setLastNoteUpdate] = useState(null);
   const [currentAnnouncement, setCurrentAnnouncement] = useState(null);
+  
+  // Typing state to prevent cursor jumping
+  const [isUserTyping, setIsUserTyping] = useState(false);
 
   // Refs with proper cleanup
   const editorRef = useRef(null);
@@ -193,25 +196,152 @@ const NotesEditor = ({
   }, [blindModeEnabled, announceToScreenReader]);
 
   /**
+   * Preserve cursor position when updating content
+   */
+  const preserveCursorPosition = useCallback(() => {
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      return {
+        startContainer: range.startContainer,
+        startOffset: range.startOffset,
+        endContainer: range.endContainer,
+        endOffset: range.endOffset
+      };
+    }
+    return null;
+  }, []);
+
+  /**
+   * Restore cursor position after content update
+   */
+  const restoreCursorPosition = useCallback((savedPosition) => {
+    if (!savedPosition) return;
+    
+    try {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      
+      // Try to restore the exact position
+      if (savedPosition.startContainer && savedPosition.startContainer.parentNode) {
+        range.setStart(savedPosition.startContainer, savedPosition.startOffset);
+        range.setEnd(savedPosition.endContainer, savedPosition.endOffset);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } else {
+        // Fallback: place cursor at end
+        const editor = editorRef.current;
+        if (editor) {
+          const range = document.createRange();
+          range.selectNodeContents(editor);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    } catch (error) {
+      // Fallback: place cursor at end
+      const editor = editorRef.current;
+      if (editor) {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+  }, []);
+
+  /**
    * Initialize editor content from room data
    */
   useEffect(() => {
-    if (roomData?.notes !== undefined && roomData.notes !== content) {
+    if (roomData?.notes !== undefined && roomData.notes !== content && !isUserTyping) {
       setContent(roomData.notes);
       setHasUnsavedChanges(false);
       previousContentRef.current = roomData.notes;
+      
+      // Ensure editor content is updated
+      if (editorRef.current) {
+        // Preserve cursor position before updating content
+        const savedPosition = preserveCursorPosition();
+        
+        editorRef.current.innerHTML = roomData.notes;
+        // Ensure text color is visible
+        editorRef.current.style.color = '#ffffff'; // White text
+        // Force all child elements to inherit proper color
+        const allElements = editorRef.current.querySelectorAll('*');
+        allElements.forEach(el => {
+          el.style.color = '';
+        });
+        
+        // Restore cursor position after content update
+        if (savedPosition) {
+          setTimeout(() => restoreCursorPosition(savedPosition), 0);
+        }
+      }
     }
-  }, [roomData?.notes]);
+  }, [roomData?.notes, preserveCursorPosition, restoreCursorPosition, isUserTyping]);
+
+  /**
+   * Ensure text visibility on mount and content changes
+   */
+  useEffect(() => {
+    const ensureTextVisibility = () => {
+      if (editorRef.current) {
+        // Set explicit text color
+        editorRef.current.style.color = '#ffffff';
+        editorRef.current.style.backgroundColor = 'transparent';
+        
+        // Remove any inline color styles from child elements
+        const allElements = editorRef.current.querySelectorAll('*');
+        allElements.forEach(el => {
+          if (el.style.color) {
+            el.style.color = '';
+          }
+        });
+      }
+    };
+
+    // Run immediately
+    ensureTextVisibility();
+
+    // Run after a short delay to ensure DOM is ready
+    const timeoutId = setTimeout(ensureTextVisibility, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [content]);
 
   /**
    * Handle external content changes from other users
    */
   useEffect(() => {
-    if (roomData?.notes !== undefined && roomData.notes !== content && roomData.notes !== previousContentRef.current) {
+    if (roomData?.notes !== undefined && roomData.notes !== content && roomData.notes !== previousContentRef.current && !isUserTyping) {
       const previousContent = previousContentRef.current;
       
       setContent(roomData.notes);
       setHasUnsavedChanges(false);
+      
+      // Ensure editor content is updated
+      if (editorRef.current) {
+        // Preserve cursor position before updating content
+        const savedPosition = preserveCursorPosition();
+        
+        editorRef.current.innerHTML = roomData.notes;
+        // Ensure text color is visible
+        editorRef.current.style.color = '#ffffff'; // White text
+        // Force all child elements to inherit proper color
+        const allElements = editorRef.current.querySelectorAll('*');
+        allElements.forEach(el => {
+          el.style.color = '';
+        });
+        
+        // Restore cursor position after content update
+        if (savedPosition) {
+          setTimeout(() => restoreCursorPosition(savedPosition), 0);
+        }
+      }
       
       // Analyze changes for Blind Mode
       if (blindModeEnabled && previousContent !== roomData.notes) {
@@ -225,7 +355,7 @@ const NotesEditor = ({
       // Update previous content reference
       previousContentRef.current = roomData.notes;
     }
-  }, [roomData?.notes, content, blindModeEnabled, analyzeNoteChange, announceNoteChange, notesMetadata]);
+  }, [roomData?.notes, content, blindModeEnabled, analyzeNoteChange, announceNoteChange, notesMetadata, preserveCursorPosition, restoreCursorPosition, isUserTyping]);
 
   /**
    * Cleanup timeouts on unmount
@@ -429,84 +559,77 @@ const NotesEditor = ({
     const range = selection.getRangeAt(0);
     const selectedText = selection.toString();
 
-    if (!selectedText) {
-      // No text selected, apply formatting to current position
-      switch (format) {
-        case 'bold':
-          document.execCommand('bold');
-          break;
-        case 'italic':
-          document.execCommand('italic');
-          break;
-        case 'underline':
-          document.execCommand('underline');
-          break;
-        case 'strikethrough':
-          document.execCommand('strikeThrough');
-          break;
-        case 'bullet':
-          document.execCommand('insertUnorderedList');
-          break;
-        case 'number':
-          document.execCommand('insertOrderedList');
-          break;
-        case 'h1':
-          document.execCommand('formatBlock', false, 'h1');
-          break;
-        case 'h2':
-          document.execCommand('formatBlock', false, 'h2');
-          break;
-        case 'h3':
-          document.execCommand('formatBlock', false, 'h3');
-          break;
-        case 'left':
-          document.execCommand('justifyLeft');
-          break;
-        case 'center':
-          document.execCommand('justifyCenter');
-          break;
-        case 'right':
-          document.execCommand('justifyRight');
-          break;
-        case 'justify':
-          document.execCommand('justifyFull');
-          break;
-        default:
-          // Unknown format
-          break;
-      }
-    } else {
-      // Text selected, wrap with formatting
-      const wrapper = document.createElement('span');
-      wrapper.innerHTML = selectedText;
-      
-      switch (format) {
-        case 'bold':
-          wrapper.style.fontWeight = 'bold';
-          break;
-        case 'italic':
-          wrapper.style.fontStyle = 'italic';
-          break;
-        case 'underline':
-          wrapper.style.textDecoration = 'underline';
-          break;
-        case 'strikethrough':
-          wrapper.style.textDecoration = 'line-through';
-          break;
-        default:
-          // Unknown format
-          break;
-      }
-      
-      range.deleteContents();
-      range.insertNode(wrapper);
+    // Focus the editor first
+    editor.focus();
+
+    // Handle different formatting types
+    switch (format) {
+      case 'bold':
+        document.execCommand('bold');
+        break;
+      case 'italic':
+        document.execCommand('italic');
+        break;
+      case 'underline':
+        document.execCommand('underline');
+        break;
+      case 'strikethrough':
+        document.execCommand('strikeThrough');
+        break;
+      case 'bullet':
+        document.execCommand('insertUnorderedList');
+        break;
+      case 'number':
+        document.execCommand('insertOrderedList');
+        break;
+      case 'h1':
+        document.execCommand('formatBlock', false, 'h1');
+        break;
+      case 'h2':
+        document.execCommand('formatBlock', false, 'h2');
+        break;
+      case 'h3':
+        document.execCommand('formatBlock', false, 'h3');
+        break;
+      case 'left':
+        document.execCommand('justifyLeft');
+        break;
+      case 'center':
+        document.execCommand('justifyCenter');
+        break;
+      case 'right':
+        document.execCommand('justifyRight');
+        break;
+      case 'justify':
+        document.execCommand('justifyFull');
+        break;
+      default:
+        console.warn(`Unknown format: ${format}`);
+        break;
     }
 
-    // Update formatting state
-    setFormatting(prev => ({
-      ...prev,
-      [format]: !prev[format]
-    }));
+    // Update formatting state for toggle buttons
+    if (['bold', 'italic', 'underline', 'strikethrough'].includes(format)) {
+      setFormatting(prev => ({
+        ...prev,
+        [format]: !prev[format]
+      }));
+    } else if (['bullet', 'number'].includes(format)) {
+      setFormatting(prev => ({
+        ...prev,
+        listType: prev.listType === format ? null : format
+      }));
+    } else if (['h1', 'h2', 'h3'].includes(format)) {
+      setFormatting(prev => ({
+        ...prev,
+        heading: prev.heading === format ? null : format
+      }));
+    } else if (['left', 'center', 'right', 'justify'].includes(format)) {
+      setFormatting(prev => ({
+        ...prev,
+        alignment: format
+      }));
+    }
 
     // Trigger content change
     handleContentChange(editor.innerHTML);
@@ -515,6 +638,58 @@ const NotesEditor = ({
       announce(`Applied ${format} formatting`, 'polite');
     }
   }, [handleContentChange, screenReader, announce]);
+
+  /**
+   * Handle undo
+   */
+  const handleUndo = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    document.execCommand('undo');
+    
+    if (screenReader) {
+      announce('Undo applied', 'polite');
+    }
+  }, [screenReader, announce]);
+
+  /**
+   * Handle redo
+   */
+  const handleRedo = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    document.execCommand('redo');
+    
+    if (screenReader) {
+      announce('Redo applied', 'polite');
+    }
+  }, [screenReader, announce]);
+
+  /**
+   * Handle indent
+   */
+  const handleIndent = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    document.execCommand('indent');
+    
+    if (screenReader) {
+      announce('Indent applied', 'polite');
+    }
+  }, [screenReader, announce]);
+
+  /**
+   * Handle outdent
+   */
+  const handleOutdent = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    document.execCommand('outdent');
+    
+    if (screenReader) {
+      announce('Outdent applied', 'polite');
+    }
+  }, [screenReader, announce]);
 
   /**
    * Handle save
@@ -571,6 +746,27 @@ const NotesEditor = ({
           event.preventDefault();
           handleSave();
           break;
+        case 'z':
+          if (event.shiftKey) {
+            event.preventDefault();
+            handleRedo();
+          } else {
+            event.preventDefault();
+            handleUndo();
+          }
+          break;
+        case 'y':
+          event.preventDefault();
+          handleRedo();
+          break;
+        case ']':
+          event.preventDefault();
+          handleIndent();
+          break;
+        case '[':
+          event.preventDefault();
+          handleOutdent();
+          break;
         case 'n':
         case 'N':
           // Ctrl+Shift+N: Read last note update
@@ -604,15 +800,34 @@ const NotesEditor = ({
     }
   }, [handleTypingStop]);
 
+  /**
+   * Place cursor at end of content
+   */
+  const placeCursorAtEnd = useCallback(() => {
+    const editor = editorRef.current;
+    if (editor) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }, []);
 
   /**
    * Handle focus events
    */
   const handleFocus = useCallback(() => {
+    // Ensure cursor is at the end when focusing
+    setTimeout(() => {
+      placeCursorAtEnd();
+    }, 0);
+    
     if (screenReader) {
       announce('Notes editor focused', 'polite');
     }
-  }, [screenReader, announce]);
+  }, [placeCursorAtEnd, screenReader, announce]);
 
   const handleBlur = useCallback(() => {
     handleTypingStop();
@@ -621,12 +836,18 @@ const NotesEditor = ({
     }
   }, [handleTypingStop, screenReader, announce]);
 
+
+
   /**
    * Handle input events
    */
   const handleInput = useCallback((event) => {
+    setIsUserTyping(true);
     const newContent = event.target.innerHTML;
     handleContentChange(newContent);
+    
+    // Reset typing flag after a short delay
+    setTimeout(() => setIsUserTyping(false), 100);
   }, [handleContentChange]);
 
   /**
@@ -639,8 +860,61 @@ const NotesEditor = ({
       const position = range.startOffset;
       handleCursorChange(position);
       handleSelectionUpdate(selection);
+      
+      // Update formatting state based on current selection
+      updateFormattingState();
     }
   }, [handleCursorChange, handleSelectionUpdate]);
+
+  /**
+   * Update formatting state based on current selection
+   */
+  const updateFormattingState = useCallback(() => {
+    if (!editorRef.current) return;
+
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    
+    if (selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    
+    // Check if we're in a formatted element
+    const isBold = document.queryCommandState('bold');
+    const isItalic = document.queryCommandState('italic');
+    const isUnderline = document.queryCommandState('underline');
+    const isStrikethrough = document.queryCommandState('strikeThrough');
+    
+    // Check for lists
+    const isInList = container.nodeType === Node.ELEMENT_NODE && 
+      (container.tagName === 'UL' || container.tagName === 'OL' || 
+       container.closest('ul') || container.closest('ol'));
+    
+    // Check for headings
+    let currentHeading = null;
+    if (container.nodeType === Node.ELEMENT_NODE) {
+      if (['H1', 'H2', 'H3'].includes(container.tagName)) {
+        currentHeading = container.tagName.toLowerCase();
+      } else {
+        const heading = container.closest('h1, h2, h3');
+        if (heading) {
+          currentHeading = heading.tagName.toLowerCase();
+        }
+      }
+    }
+    
+    // Update formatting state
+    setFormatting(prev => ({
+      ...prev,
+      bold: isBold,
+      italic: isItalic,
+      underline: isUnderline,
+      strikethrough: isStrikethrough,
+      listType: isInList ? (container.closest('ul') ? 'bullet' : 'number') : null,
+      heading: currentHeading
+    }));
+  }, []);
 
   /**
    * Get editor status for screen readers
@@ -705,7 +979,7 @@ const NotesEditor = ({
    */
   const renderFormattingToolbar = () => {
     return (
-      <div className="flex items-center space-x-1 p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+      <div className="flex items-center space-x-1 p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 overflow-x-auto">
         {/* Text formatting */}
         <button
           onClick={() => applyFormatting('bold')}
@@ -741,6 +1015,27 @@ const NotesEditor = ({
           title="Strikethrough"
         >
           <s>S</s>
+        </button>
+
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600" />
+
+        {/* Undo/Redo */}
+        <button
+          onClick={handleUndo}
+          className="btn btn-sm btn-outline"
+          aria-label="Undo"
+          title="Undo (Ctrl+Z)"
+        >
+          ↶
+        </button>
+        
+        <button
+          onClick={handleRedo}
+          className="btn btn-sm btn-outline"
+          aria-label="Redo"
+          title="Redo (Ctrl+Y)"
+        >
+          ↷
         </button>
 
         <div className="w-px h-6 bg-gray-300 dark:bg-gray-600" />
@@ -792,6 +1087,27 @@ const NotesEditor = ({
           title="Heading 3"
         >
           H3
+        </button>
+
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600" />
+
+        {/* Indent/Outdent */}
+        <button
+          onClick={handleOutdent}
+          className="btn btn-sm btn-outline"
+          aria-label="Outdent"
+          title="Outdent (Ctrl+[)"
+        >
+          ⇐
+        </button>
+        
+        <button
+          onClick={handleIndent}
+          className="btn btn-sm btn-outline"
+          aria-label="Indent"
+          title="Indent (Ctrl+])"
+        >
+          ⇒
         </button>
 
         <div className="w-px h-6 bg-gray-300 dark:bg-gray-600" />
@@ -882,16 +1198,22 @@ const NotesEditor = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900 min-h-0">
       {/* Formatting Toolbar */}
-      {renderFormattingToolbar()}
+      <div className="flex-shrink-0">
+        {renderFormattingToolbar()}
+      </div>
 
       {/* Editor Container */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden min-h-0">
         {/* Editor */}
         <div
           ref={editorRef}
-          className="h-full w-full p-4 overflow-y-auto focus:outline-none"
+          className="h-full w-full p-4 overflow-y-auto focus:outline-none prose prose-sm max-w-none"
+          style={{ 
+            color: '#ffffff',
+            backgroundColor: 'transparent'
+          }}
           contentEditable
           suppressContentEditableWarning
           onInput={handleInput}

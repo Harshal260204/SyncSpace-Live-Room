@@ -75,8 +75,15 @@ const ParticipantsList = ({ participants }) => {
    * Format join time
    */
   const formatJoinTime = (joinTime) => {
+    // Handle cases where joinTime might be undefined, null, or invalid
+    if (!joinTime) return 'Unknown';
+    
     const date = new Date(joinTime);
     const now = new Date();
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) return 'Unknown';
+    
     const diffInMinutes = Math.floor((now - date) / (1000 * 60));
 
     if (diffInMinutes < 1) return 'Just now';
@@ -98,7 +105,10 @@ const ParticipantsList = ({ participants }) => {
         case 'activity':
           return new Date(b.lastActivityAt) - new Date(a.lastActivityAt);
         case 'joinTime':
-          return new Date(b.joinedAt) - new Date(a.joinedAt);
+          // Handle cases where joinedAt might be undefined
+          const aJoinTime = a.joinedAt ? new Date(a.joinedAt) : new Date(0);
+          const bJoinTime = b.joinedAt ? new Date(b.joinedAt) : new Date(0);
+          return bJoinTime - aJoinTime;
         default:
           return 0;
       }
@@ -225,7 +235,7 @@ const ParticipantsList = ({ participants }) => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900 min-h-0">
       {/* Participants Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         <div className="flex items-center space-x-2">
@@ -262,7 +272,7 @@ const ParticipantsList = ({ participants }) => {
       {/* Participants List */}
       <div 
         ref={listRef}
-        className="flex-1 overflow-y-auto p-3 space-y-2"
+        className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0"
         role="list"
         aria-label="Participants list"
         aria-describedby="participants-help"

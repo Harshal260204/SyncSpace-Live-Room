@@ -324,31 +324,33 @@ const WorkspaceLayout = ({
       {/* Workspace Content */}
       <div 
         ref={layoutRef}
-        className="flex-1 overflow-hidden"
+        className="flex-1 overflow-hidden min-h-0"
         role="main"
         aria-label="Workspace content"
         aria-describedby="workspace-help"
       >
         {layout.mode === 'tabs' ? (
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col min-h-0">
             {/* Tabs */}
-            <WorkspaceTabs
-              tabs={getTabsConfig()}
-              activeTab={getTabsConfig().find(tab => tab.id === layout.activeTab)}
-              onTabChange={handleTabChange}
-            />
+            <div className="flex-shrink-0">
+              <WorkspaceTabs
+                tabs={getTabsConfig()}
+                activeTab={getTabsConfig().find(tab => tab.id === layout.activeTab)}
+                onTabChange={handleTabChange}
+              />
+            </div>
             
             {/* Tab Content */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden min-h-0">
               {renderTabContent()}
             </div>
           </div>
         ) : (
           <div 
-            className="h-full grid gap-4 p-4"
+            className="h-full grid gap-2 sm:gap-4 p-2 sm:p-4 min-h-0 overflow-auto"
             style={{
-              gridTemplateColumns: `repeat(${layout.grid.columns}, 1fr)`,
-              gridTemplateRows: `repeat(${layout.grid.rows}, 1fr)`
+              gridTemplateColumns: `repeat(${layout.grid.columns}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${layout.grid.rows}, minmax(0, 1fr))`
             }}
           >
             {/* Code Editor */}

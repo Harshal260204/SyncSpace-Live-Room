@@ -30,6 +30,10 @@ const userPresenceSchema = new mongoose.Schema({
     x: { type: Number, default: 0 },
     y: { type: Number, default: 0 },
   },
+  joinedAt: {
+    type: Date,
+    default: Date.now,
+  },
   lastActivity: {
     type: Date,
     default: Date.now,
@@ -318,6 +322,7 @@ roomSchema.methods.addParticipant = async function(userData) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // First, try to update existing participant by username
+      const now = new Date();
       const updateResult = await this.constructor.findOneAndUpdate(
         { 
           _id: this._id,
@@ -328,9 +333,10 @@ roomSchema.methods.addParticipant = async function(userData) {
             'participants.$.userId': userData.userId,
             'participants.$.socketId': userData.socketId,
             'participants.$.isActive': true,
-            'participants.$.lastActivity': new Date(),
+            'participants.$.lastActivity': now,
             'participants.$.accessibility': userData.accessibility || {},
-            'participants.$.color': userData.color || '#3B82F6'
+            'participants.$.color': userData.color || '#3B82F6',
+            'participants.$.joinedAt': now // Set joinedAt for existing participants
           }
         },
         { new: true, runValidators: true }
@@ -338,13 +344,15 @@ roomSchema.methods.addParticipant = async function(userData) {
 
       // If no existing participant was found, add new one
       if (!updateResult) {
+        const now = new Date();
         await this.constructor.findByIdAndUpdate(
           this._id,
           {
             $push: {
               participants: {
                 ...userData,
-                lastActivity: new Date(),
+                joinedAt: now,
+                lastActivity: now,
                 isActive: true,
               }
             }

@@ -28,10 +28,12 @@ const ChatPanel = ({
   roomData, 
   participants, 
   onRoomUpdate,
+  onSendMessage,
+  compact = false,
   isVisible = true 
 }) => {
   const { announce, screenReader } = useAccessibility();
-  const { connected, sendEvent } = useSocket();
+  const { connected, sendEvent, chatMessages, sendChatMessage } = useSocket();
   const { user } = useUser();
   const { enabled: blindModeEnabled, announceToScreenReader } = useBlindMode();
 
@@ -39,7 +41,7 @@ const ChatPanel = ({
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [typingUsers] = useState({});
+  const [typingUsers, setTypingUsers] = useState({});
   const [unreadCount, setUnreadCount] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
 
@@ -74,6 +76,7 @@ const ChatPanel = ({
   const typingTimeoutRef = useRef(null);
   const audioContextRef = useRef(null);
   const announcementTimeoutRef = useRef(null);
+  const lastReadRef = useRef(Date.now());
   const cleanupRefs = useRef([]);
 
   // Constants
@@ -164,7 +167,7 @@ const ChatPanel = ({
   }, [blindModeEnabled, announceToScreenReader]);
 
   /**
-   * Initialize chat from room data
+   * Initialize chat from room data and socket context
    */
   useEffect(() => {
     if (roomData?.chat) {
@@ -200,6 +203,95 @@ const ChatPanel = ({
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
     }, notification.duration || NOTIFICATION_DURATION);
   }, []);
+
+  /**
+   * Update messages from socket context
+   */
+  useEffect(() => {
+    if (chatMessages && chatMessages.length > 0) {
+      setMessages(chatMessages);
+      
+      // Handle new messages for notifications and announcements
+      const latestMessage = chatMessages[chatMessages.length - 1];
+      if (latestMessage && latestMessage.userId !== user?.userId) {
+        // Handle new message inline to avoid dependency issues
+        // Add to activity feed
+        addActivity({
+          type: 'message',
+          description: `${latestMessage.username} sent a message`,
+          details: latestMessage.text,
+          timestamp: Date.now(),
+          userId: latestMessage.userId,
+          username: latestMessage.username
+        });
+
+        // Show notification if not focused
+        if (!isFocused) {
+          showNotification({
+            type: 'message',
+            title: 'New Message',
+            message: `${latestMessage.username}: ${latestMessage.text}`,
+            duration: NOTIFICATION_DURATION
+          });
+        }
+
+        // Announce for Blind Mode
+        announceForBlindMode(latestMessage, 'message');
+
+        // Announce to screen readers (fallback)
+        if (screenReader && !blindModeEnabled) {
+          announce(`New message from ${latestMessage.username}: ${latestMessage.text}`, 'polite');
+        }
+      }
+      
+      // Auto-scroll to bottom when new messages arrive
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+    }
+  }, [chatMessages, user?.userId, isFocused, addActivity, showNotification, announceForBlindMode, screenReader, announce, blindModeEnabled]);
+
+  /**
+   * Handle socket events for typing indicators
+   */
+  useEffect(() => {
+    if (!connected || !sendEvent) return;
+
+    const handleTypingStart = (data) => {
+      if (data.userId !== user?.userId) {
+        setTypingUsers(prev => ({
+          ...prev,
+          [data.userId]: {
+            username: data.username,
+            timestamp: Date.now()
+          }
+        }));
+      }
+    };
+
+    const handleTypingStop = (data) => {
+      if (data.userId !== user?.userId) {
+        setTypingUsers(prev => {
+          const newTypingUsers = { ...prev };
+          delete newTypingUsers[data.userId];
+          return newTypingUsers;
+        });
+      }
+    };
+
+    // Note: Socket events are handled by SocketContext
+    // This is just for local typing state management
+    
+    return () => {
+      // Cleanup if needed
+    };
+  }, [connected, sendEvent, user?.userId]);
+
+
+
+
 
 
   /**
@@ -268,53 +360,6 @@ const ChatPanel = ({
     }
   }, [messages]);
 
-  /**
-   * Handle new message
-   */
-  const handleNewMessage = useCallback((messageData) => {
-    const newMessage = {
-      id: messageData.id || `msg-${Date.now()}-${Math.random()}`,
-      text: messageData.text,
-      username: messageData.username,
-      userId: messageData.userId,
-      timestamp: messageData.timestamp || Date.now(),
-      type: messageData.type || 'message',
-      color: messageData.color || '#000000'
-    };
-
-    setMessages(prev => {
-      const updated = [...prev, newMessage];
-      return updated.slice(-MAX_MESSAGES); // Keep only last MAX_MESSAGES
-    });
-
-    // Add to activity feed
-    addActivity({
-      type: 'message',
-      description: `${messageData.username} sent a message`,
-      details: messageData.text,
-      timestamp: Date.now(),
-      userId: messageData.userId,
-      username: messageData.username
-    });
-
-    // Show notification if not focused or from other user
-    if (!isFocused || messageData.userId !== user?.userId) {
-      showNotification({
-        type: 'message',
-        title: 'New Message',
-        message: `${messageData.username}: ${messageData.text}`,
-        duration: NOTIFICATION_DURATION
-      });
-    }
-
-    // Announce for Blind Mode
-    announceForBlindMode(messageData, 'message');
-
-    // Announce to screen readers (fallback)
-    if (screenReader && !blindModeEnabled) {
-      announce(`New message from ${messageData.username}: ${messageData.text}`, 'polite');
-    }
-  }, [isFocused, user, screenReader, announce, addActivity, showNotification, announceForBlindMode, blindModeEnabled]);
 
 
 
@@ -323,29 +368,19 @@ const ChatPanel = ({
    * Send message
    */
   const sendMessage = useCallback(() => {
-    if (!newMessage.trim() || !connected || !sendEvent) return;
+    if (!newMessage.trim() || !connected) return;
 
-    const messageData = {
-      id: `msg-${Date.now()}-${Math.random()}`,
-      text: newMessage.trim(),
-      username: user?.username || 'Anonymous',
-      userId: user?.userId,
-      timestamp: Date.now(),
-      type: 'message',
-      color: user?.preferences?.cursorColor || '#000000'
-    };
-
-    // Send to server
-    sendEvent('chat-message', {
-      roomId,
-      message: messageData
-    });
-
-    // Add to local messages immediately
-    handleNewMessage(messageData);
-
-    // Clear input
+    const messageText = newMessage.trim();
+    
+    // Clear input first
     setNewMessage('');
+
+    // Use onSendMessage prop if provided, otherwise use SocketContext
+    if (onSendMessage) {
+      onSendMessage(messageText, 'text');
+    } else {
+      sendChatMessage(messageText, 'text');
+    }
 
     // Stop typing indicator
     setIsTyping(false);
@@ -355,7 +390,7 @@ const ChatPanel = ({
         userId: user?.userId
       });
     }
-  }, [newMessage, connected, sendEvent, user, roomId, handleNewMessage]);
+  }, [newMessage, connected, onSendMessage, sendChatMessage, sendEvent, user, roomId]);
 
   /**
    * Handle input change
@@ -406,6 +441,7 @@ const ChatPanel = ({
   const handleFocus = useCallback(() => {
     setIsFocused(true);
     setUnreadCount(0);
+    lastReadRef.current = Date.now();
   }, []);
 
   /**
@@ -414,6 +450,19 @@ const ChatPanel = ({
   const handleBlur = useCallback(() => {
     setIsFocused(false);
   }, []);
+
+  /**
+   * Update unread count when messages change
+   */
+  useEffect(() => {
+    if (!isFocused && messages.length > 0) {
+      const unreadMessages = messages.filter(msg => 
+        msg.userId !== user?.userId && 
+        msg.timestamp > (lastReadRef.current || 0)
+      );
+      setUnreadCount(unreadMessages.length);
+    }
+  }, [messages, isFocused, user?.userId]);
 
 
   /**
@@ -546,7 +595,7 @@ const ChatPanel = ({
   if (!isVisible) return null;
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 min-h-0">
       {/* Chat Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -609,7 +658,7 @@ const ChatPanel = ({
       {/* Messages */}
       <div
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-3 space-y-2"
+        className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0"
         onFocus={handleFocus}
         onBlur={handleBlur}
         role="log"
@@ -622,7 +671,7 @@ const ChatPanel = ({
       </div>
 
       {/* Message Input */}
-      <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+      <div className="flex-shrink-0 p-3 border-t border-gray-200 dark:border-gray-700">
         <div className="flex space-x-2">
           <input
             ref={messageInputRef}

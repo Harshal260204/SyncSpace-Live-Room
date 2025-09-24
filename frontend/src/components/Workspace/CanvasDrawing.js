@@ -704,8 +704,8 @@ const CanvasDrawing = ({
           const rect = new fabric.Rect({
             left: pointer.x,
             top: pointer.y,
-            width: 1,
-            height: 1,
+            width: 5, // Start with minimum visible size
+            height: 5,
             originX: 'left',
             originY: 'top',
             fill: 'transparent',
@@ -793,7 +793,18 @@ const CanvasDrawing = ({
         const top = Math.min(start.y, pointer.y);
         const width = Math.abs(pointer.x - start.x);
         const height = Math.abs(pointer.y - start.y);
-        activeShapeRef.current.set({ left, top, width, height });
+        
+        // Ensure minimum size for visibility
+        const minSize = 5;
+        const finalWidth = Math.max(width, minSize);
+        const finalHeight = Math.max(height, minSize);
+        
+        activeShapeRef.current.set({ 
+          left, 
+          top, 
+          width: finalWidth, 
+          height: finalHeight 
+        });
         canvas.requestRenderAll();
       } else if (currentTool === 'circle' && activeShapeRef.current && shapeStartRef.current) {
         const start = shapeStartRef.current;
@@ -1283,21 +1294,29 @@ const CanvasDrawing = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900 min-h-0">
       {/* Tool Palette */}
-      {renderToolPalette()}
+      <div className="flex-shrink-0">
+        {renderToolPalette()}
+      </div>
 
       {/* Color Palette */}
-      {renderColorPalette()}
+      <div className="flex-shrink-0">
+        {renderColorPalette()}
+      </div>
 
       {/* Stroke Width Controls */}
-      {renderStrokeWidthControls()}
+      <div className="flex-shrink-0">
+        {renderStrokeWidthControls()}
+      </div>
 
       {/* Voice Commands Controls */}
-      {renderVoiceCommandsControls()}
+      <div className="flex-shrink-0">
+        {renderVoiceCommandsControls()}
+      </div>
 
       {/* Canvas Container */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden min-h-0">
         <div
           ref={containerRef}
           className="h-full w-full relative"

@@ -355,29 +355,31 @@ const RoomWorkspace = () => {
                 </div>
 
                 {/* Controls */}
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-1">
                   {/* Fullscreen toggle */}
                   <button
                     onClick={() => setIsFullscreen(!isFullscreen)}
-                    className="btn btn-outline"
+                    className="btn btn-outline btn-sm sm:btn-sm"
                     aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
                   >
-                    {isFullscreen ? '⤓' : '⤢'}
+                    <span className="hidden sm:inline">{isFullscreen ? '⤓' : '⤢'}</span>
+                    <span className="sm:hidden">{isFullscreen ? '⤓' : '⤢'}</span>
                   </button>
 
                   {/* Participants toggle */}
                   <button
                     onClick={() => setShowParticipants(!showParticipants)}
-                    className={`btn ${showParticipants ? 'btn-primary' : 'btn-outline'}`}
+                    className={`btn btn-sm ${showParticipants ? 'btn-primary' : 'btn-outline'}`}
                     aria-label={showParticipants ? 'Hide participants' : 'Show participants'}
                   >
-                    👥 {Object.keys(participants).length}
+                    <span className="hidden sm:inline">👥 {Object.keys(participants).length}</span>
+                    <span className="sm:hidden">👥</span>
                   </button>
 
                   {/* Chat toggle */}
                   <button
                     onClick={() => setShowChat(!showChat)}
-                    className={`btn ${showChat ? 'btn-primary' : 'btn-outline'}`}
+                    className={`btn btn-sm ${showChat ? 'btn-primary' : 'btn-outline'}`}
                     aria-label={showChat ? 'Hide chat' : 'Show chat'}
                   >
                     💬
@@ -386,7 +388,7 @@ const RoomWorkspace = () => {
                   {/* Room info toggle */}
                   <button
                     onClick={() => setShowRoomInfo(!showRoomInfo)}
-                    className={`btn ${showRoomInfo ? 'btn-primary' : 'btn-outline'}`}
+                    className={`btn btn-sm ${showRoomInfo ? 'btn-primary' : 'btn-outline'}`}
                     aria-label={showRoomInfo ? 'Hide room info' : 'Show room info'}
                     title="Room sharing and information"
                   >
@@ -415,10 +417,10 @@ const RoomWorkspace = () => {
           </header>
 
           {/* Main workspace */}
-          <div className="flex h-[calc(100vh-4rem)]">
+          <div className="flex h-[calc(100vh-4rem)] min-h-0">
             {/* Left sidebar - Participants and Room Info */}
             {(showParticipants || showRoomInfo) && (
-              <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+              <div className="w-48 sm:w-64 min-w-0 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col max-h-full overflow-hidden">
                 {/* Room Info */}
                 {showRoomInfo && (
                   <div className="p-4 border-b border-gray-200 dark:border-gray-700">
@@ -440,10 +442,10 @@ const RoomWorkspace = () => {
             )}
 
             {/* Main content area */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
               {/* Tab navigation */}
-              <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <nav className="flex space-x-8 px-4 sm:px-6 lg:px-8">
+              <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <nav className="flex space-x-2 sm:space-x-4 lg:space-x-8 px-2 sm:px-4 lg:px-8 overflow-x-auto">
                   {[
                     { id: 'code', label: 'Code', icon: '💻' },
                     { id: 'notes', label: 'Notes', icon: '📝' },
@@ -454,7 +456,7 @@ const RoomWorkspace = () => {
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       className={`
-                        py-4 px-1 border-b-2 font-medium text-sm
+                        py-2 sm:py-4 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex-shrink-0
                         ${activeTab === tab.id
                           ? 'border-primary-500 text-primary-600 dark:text-primary-400'
                           : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
@@ -462,15 +464,15 @@ const RoomWorkspace = () => {
                       `}
                       aria-current={activeTab === tab.id ? 'page' : undefined}
                     >
-                      <span className="mr-2">{tab.icon}</span>
-                      {tab.label}
+                      <span className="mr-1 sm:mr-2">{tab.icon}</span>
+                      <span className="hidden sm:inline">{tab.label}</span>
                     </button>
                   ))}
                 </nav>
               </div>
 
               {/* Tab content */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0">
                 {activeTab === 'code' && (
                   <CodeEditor
                     onCodeChange={sendCodeChange}
@@ -494,8 +496,10 @@ const RoomWorkspace = () => {
                 
                 {activeTab === 'chat' && (
                   <ChatPanel
-                    onSendMessage={sendChatMessage}
+                    roomId={roomId}
+                    roomData={roomData}
                     participants={participants}
+                    onSendMessage={sendChatMessage}
                   />
                 )}
               </div>
@@ -503,10 +507,12 @@ const RoomWorkspace = () => {
 
             {/* Right sidebar - Chat */}
             {showChat && activeTab !== 'chat' && (
-              <div className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700">
+              <div className="w-48 sm:w-64 lg:w-80 min-w-0 flex-shrink-0 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 max-h-full overflow-hidden">
                 <ChatPanel
-                  onSendMessage={sendChatMessage}
+                  roomId={roomId}
+                  roomData={roomData}
                   participants={participants}
+                  onSendMessage={sendChatMessage}
                   compact={true}
                 />
               </div>
